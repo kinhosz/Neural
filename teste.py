@@ -3,6 +3,7 @@ import random
 import math
 from model import Network
 from lib import Function as F
+from PIL import Image
 
 def read_image_files(url):
 	f = open(url,"rb")
@@ -142,6 +143,24 @@ def main():
 			print("[ERROR - {}] => {}".format(labels[i],org))
 
 	print("Total score: {}/{} => {}".format(hit,10000,hit/10000))
+
+	pick = random.randint(0,9999)
+	print_image = images[pick]
+	ans = bia.send(print_image)
+	ans = organize(ans)
+	print("Esperado: {}".format(labels[pick]))
+	print("Chute: {} com {}%% de precisao\n {} com {}%% de precisao. {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
+	teste(print_image)
+
+def teste(l):
+	width = 28
+	height = 28
+
+	img = Image.new(mode="L",size=(width,height))
+	for i in range(28):
+		for j in range(28):
+			img.putpixel((i,j),l[i*28 + j])
+	img.show()
 
 if __name__ == "__main__":
 	main()
