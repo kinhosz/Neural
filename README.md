@@ -1,5 +1,5 @@
 # Deep-Learning
-Uma rede neural baseada no deeplearningbook.com.br<br>
+Uma rede neural baseada no [](deeplearningbook.com.br)<br>
 Com o dataset do MNIST, a rede conseguiu um desempenho de 85% de acertos.<br>
 Segue um log com os resultados, cada linha informa se a rede acertou a imagem ou não.
 Seguindo de uma tupla com 3 elementos (p, rate):<br>
