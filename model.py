@@ -80,3 +80,18 @@ class Network(object):
 
             self.weights[-l] = self.weights[-l] - (self.eta * nabla_w)
             self.biases[-l] = self.biases[-l] - (self.eta * nabla_b)
+
+    def send(self, l):
+        x = self.activation(np.array([l]))
+        return self.feedForward(x)[0]
+
+    def learn(self,x,y):
+        x = self.activation(np.array([x]))
+        y = np.array([y])
+        self.backPropagation(x,y)
+
+def main():
+    print("ola mundo")
+
+if __name__ == "__main__":
+    main()
