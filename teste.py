@@ -159,7 +159,7 @@ def teste(l):
 	img = Image.new(mode="L",size=(width,height))
 	for i in range(28):
 		for j in range(28):
-			img.putpixel((i,j),l[i*28 + j])
+			img.putpixel((j,i),l[i*28 + j])
 	img.show()
 
 if __name__ == "__main__":
