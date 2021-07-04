@@ -5,4 +5,4 @@ Segue um log com os resultados, cada linha informa se a rede acertou a imagem ou
 Seguindo de uma tupla com 3 elementos (p, rate):<br>
    p: valor que a rede acredita ser a imagem [0,9]
    rate: taxa de confiança em relação àquele valor. [0,1]
-![](dl.png)
+![](assets/dl.png)
