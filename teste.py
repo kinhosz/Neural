@@ -149,7 +149,7 @@ def main():
 	ans = bia.send(print_image)
 	ans = organize(ans)
 	print("Esperado: {}".format(labels[pick]))
-	print("Chute: {} com {}%% de precisao\n {} com {}%% de precisao. {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
+	print("Chute: {} com {}%% de precisao\n {} com {}%% de precisao.\n {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
 	teste(print_image)
 
 def teste(l):
