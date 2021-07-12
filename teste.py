@@ -1,8 +1,6 @@
-import numpy as np
 import random
-import math
 from model import Network
-from lib import Function as F
+import matplotlib.pyplot as plt
 from PIL import Image
 
 def read_image_files(url):
@@ -78,37 +76,44 @@ def main():
 	images = read_image_files("data/train-images.idx3-ubyte")
 	labels = read_label_files("data/train-labels.idx1-ubyte")
 
-	train_test = [(x,y) for x, y in zip(images,labels)]
-	random.shuffle(train_test)
-	images = [x for (x,y) in train_test]
-	labels = [y for (x,y) in train_test]
-
 	hit = 0
 	epoch_size = 1000
 	test = 0
 	epoch = 0
 
+	eixo_x = []
+	eixo_y = []
+
 	out = []
 	for i in range(10):
 		out.append(0.0)
 
-	for i in range(60000):
+	for lazy in range(30):
+		train_test = [(x,y) for x, y in zip(images,labels)]
+		random.shuffle(train_test)
+		images = [x for (x,y) in train_test]
+		labels = [y for (x,y) in train_test]
+		for i in range(60000):
 
-		ans = bia.send(images[i])
-		if isOk(labels[i],ans):
-			hit = hit + 1
+			ans = bia.send(images[i])
+			if isOk(labels[i],ans):
+				hit = hit + 1
 
-		test = test + 1
-		out[labels[i]] = 1.0
-		bia.learn(images[i],out)
-		out[labels[i]] = 0.0
+			test = test + 1
+			out[labels[i]] = 1.0
+			bia.learn(images[i],out)
+			##eixo_x.append(i)
+			##eixo_y.append(bia.cost(images[i],out))
+			out[labels[i]] = 0.0
 
-		if test == epoch_size:
-			rate = hit/epoch_size
-			print("epoch {}: rate = {}".format(epoch,rate))
-			epoch = epoch + 1
-			test = 0
-			hit = 0
+			if test == epoch_size:
+				rate = hit/epoch_size
+				print("epoch {}: rate = {}".format(epoch,rate))
+				epoch = epoch + 1
+				test = 0
+				hit = 0
+				eixo_x.append(epoch)
+				eixo_y.append(rate)
 
 	images = read_image_files("data/t10k-images.idx3-ubyte")
 	labels = read_label_files("data/t10k-labels.idx1-ubyte")
@@ -137,10 +142,10 @@ def main():
 
 		org = organize(ans)
 
-		if acerto:
+		'''if acerto:
 			print("[OK] => {}".format(org))
 		else:
-			print("[ERROR - {}] => {}".format(labels[i],org))
+			print("[ERROR - {}] => {}".format(labels[i],org))'''
 
 	print("Total score: {}/{} => {}".format(hit,10000,hit/10000))
 
@@ -151,6 +156,7 @@ def main():
 	print("Esperado: {}".format(labels[pick]))
 	print("Chute: {} com {}%% de precisao\n {} com {}%% de precisao.\n {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
 	teste(print_image)
+	graph(eixo_x,eixo_y)
 
 def teste(l):
 	width = 28
@@ -161,6 +167,11 @@ def teste(l):
 		for j in range(28):
 			img.putpixel((j,i),l[i*28 + j])
 	img.show()
+
+def graph(eixo_x,eixo_y):
+	plt.plot(eixo_x,eixo_y,color = 'blue')
+	plt.title('Cost vs test')
+	plt.show()
 
 if __name__ == "__main__":
 	main()

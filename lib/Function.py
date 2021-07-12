@@ -5,14 +5,31 @@ def config():
 	#np.seterr(all="none")
 	pass
 
-def mse(predicted,target):
-	n = len(predicted)
-	error = (1/n) * np.sum(np.square(predicted - target))
+def mse(predicted,target): 
+	error = np.sum(np.square(predicted - target))/2.0
 	return error
 
 def mse_derivate(predicted,target):
-	n = len(predicted)
-	return 2.0*(predicted - target)/n
+	return (predicted - target)
+
+def relu(z):
+	l = len(z)
+	for i in range(0,l):
+		if z[i][0] < 0.0:
+			z[i][0] = 0.0
+
+	return z
+
+def relu_derivate(z,alpha):
+	l = len(z)
+	for i in range(0,l):
+		if z[i][0] <= 0.0:
+			z[i][0] = 0.0
+		else:
+			z[i][0] = 1.0
+
+	z = z*alpha
+	return z
 
 def relu2(z):
 	d = 0.01
@@ -47,6 +64,12 @@ def softmax_derivate(z,alpha):
 	beta = (alpha*soft).sum()/S
 	soft = soft*(alpha - beta)/S
 	return soft
+
+def sigmoid(z):
+	return 20.0*(1.0/(1.0 + np.exp(-z))) - 10 # (-10,10)
+
+def sigmoid_derivate(z,alpha):
+    return alpha*(np.exp(-z)/((1.0 + np.exp(-z))*(1.0 + np.exp(-z))))*20.0
 
 def sigmoid2_teste(z):
     #return 2.0*(1.0/(1.0 + np.exp(-z))) - 1.0 # (-1,1)
