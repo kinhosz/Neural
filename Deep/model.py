@@ -1,15 +1,22 @@
 import numpy as np
 import random
-from lib import Function as F
+from Deep.lib import CPU_Function as CF
+from Deep.lib import GPU_Function as GF
 
 class Network(object):
 
-    def __init__(self,sizes,eta=0.01):
+    def __init__(self,sizes,eta=0.01, random_weights=True, gpu_mode=False):
         self.eta = eta
         self.num_layers = len(sizes)
         self.sizes = sizes
-        self.weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
+        self.weights = None
         self.biases = [np.random.randn(1,x) for x in sizes[1:]]
+        self.gpu_mode = gpu_mode
+
+        if random_weights:
+            self.weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
+        else:
+            self.weights = [np.zeros(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
 
     ############################################################################
     ############# NETWORK ######################################################
@@ -18,31 +25,31 @@ class Network(object):
     # y = minha saida
     # o = output esperado
     def __loss(self,y,o):
-        return F.mse(y,o)
+        return CF.mse(y,o)
 
     def __d_loss(self,y,o):
-        return F.mse_derivate(y,o)
+        return CF.mse_derivate(y,o)
 
     # funcao para selecionar a saida do neuronio
     def __selector(self,z):
-        return F.softmax(z)
+        return CF.softmax(z)
 
     def __d_selector(self,z,alpha):
-        return F.softmax_derivate(z,alpha)
+        return CF.softmax_derivate(z,alpha)
 
     # funcao para ativar cada neuronio
     def __activation(self,z):
-        return F.sigmoid2(z)
+        return CF.sigmoid2(z)
 
     def __d_activation(self,z,alpha):
-        return F.sigmoid2_derivate(z,alpha)
+        return CF.sigmoid2_derivate(z,alpha)
     
     # funcao que realiza a entrada de toda camada anterior
     def __layer(self,x,w,b):
-        return F.dotMatrix(x,w,b)
+        return CF.dotMatrix(x,w,b)
 
     def __d_layer(self,x,w,alpha):
-        return F.dotMatrix_derivate(x,w,alpha)
+        return CF.dotMatrix_derivate(x,w,alpha)
         
     def __feedForward(self,x):
 

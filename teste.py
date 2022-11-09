@@ -1,7 +1,8 @@
 import random
-from model import Network
+from Deep import Network
 import matplotlib.pyplot as plt
 from PIL import Image
+from timeit import default_timer as timer
 
 def read_image_files(url):
 	f = open(url,"rb")
@@ -87,6 +88,8 @@ def main():
 	out = []
 	for i in range(10):
 		out.append(0.0)
+	
+	start = timer()
 
 	for lazy in range(30):
 		train_test = [(x,y) for x, y in zip(images,labels)]
@@ -108,7 +111,8 @@ def main():
 
 			if test == epoch_size:
 				rate = hit/epoch_size
-				print("epoch {}: rate = {}".format(epoch,rate))
+				print("epoch {}: rate = {}, with time elapsed = {}".format(epoch,rate, timer() - start))
+				start = timer()
 				epoch = epoch + 1
 				test = 0
 				hit = 0
