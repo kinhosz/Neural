@@ -1,9 +1,9 @@
 import numpy as np
 import math
-from numba import cuda
+from numba import cuda, float64
 from timeit import default_timer as timer
 
-THREADSPERBLOCK = 1024
+THREADSPERBLOCK = 16
 MINIMUMBLOCKSIZE = 28
 EPS = 1e-10
 
@@ -98,8 +98,43 @@ def sigmoid2_derivate(arr, alpha):
 	if x < arr.shape[1]:
 		arr[0, x] = alpha[0, x] * (2.0 * math.exp(-arr[0, x]) / ( (1.0 + math.exp(-arr[0, x])) * (1.0 + math.exp(-arr[0, x]))))
 
-def dotMatrix(x,w,b):
+def dotMatrix_cpu(x,w,b):
 	return x.dot(w) + b
+
+@cuda.jit
+def dotMatrix(arr, A, B, C):
+	sA = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
+	sB = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
+	
+	x, y = cuda.grid(2)
+	
+	tx = cuda.threadIdx.x
+	ty = cuda.threadIdx.y
+	bpg = cuda.gridDim.x    # blocks per grid
+
+    # Each thread computes one element in the result matrix.
+    # The dot product is chunked into dot products of THREADSPERBLOCK-long vectors.
+	tmp = float64(0.)
+	for i in range(bpg):
+        # Preload data into shared memory
+		sA[ty, tx] = 0
+		sB[ty, tx] = 0
+		if y < A.shape[0] and (tx+i*THREADSPERBLOCK) < A.shape[1]:
+			sA[ty, tx] = A[y, tx + i * THREADSPERBLOCK]
+		if x < B.shape[1] and (ty+i*THREADSPERBLOCK) < B.shape[0]:
+			sB[ty, tx] = B[ty + i * THREADSPERBLOCK, x]
+
+        # Wait until all threads finish preloading
+		cuda.syncthreads()
+
+        # Computes partial product on the shared memory
+		for j in range(THREADSPERBLOCK):
+			tmp += sA[ty, j] * sB[j, tx]
+
+        # Wait until all threads finish computing
+		cuda.syncthreads()
+	if y < arr.shape[0] and x < arr.shape[1]:
+		arr[y, x] = C[y, x] + tmp
 
 def dotMatrix_derivate(x,w,alpha):
 	return alpha.dot(w.transpose())
@@ -259,11 +294,42 @@ def sigmoid2_derivate_test():
 	for i in range(LEN_ARRAY):
 		assert abs(ans_gpu[0, i] - z_cpu[0, i]) <= EPS
 
+def dotMatrix_test():
+	LEN_ARRAY1 = 2000
+	LEN_ARRAY2 = 3000
+
+	x = np.random.randn(1, LEN_ARRAY1)
+	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
+	b = np.random.randn(1, LEN_ARRAY2)
+	arr = np.zeros(b.shape)
+
+	stream = cuda.stream()
+
+	x_gpu = cuda.to_device(x, stream=stream)
+	w_gpu = cuda.to_device(w, stream=stream)
+	b_gpu = cuda.to_device(b, stream=stream)
+	arr_gpu = cuda.to_device(arr, stream=stream)
+
+	res = dotMatrix_cpu(x,w,b)
+
+	grid_y_max = max(x_gpu.shape[0], w_gpu.shape[0])
+	grid_x_max = max(x_gpu.shape[1], w_gpu.shape[1])
+	blockspergrid_x = (grid_x_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	blockspergrid_y = (grid_y_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	blockspergrid = (blockspergrid_x, blockspergrid_y)
+
+	dotMatrix[blockspergrid, (THREADSPERBLOCK, THREADSPERBLOCK)](arr_gpu, x_gpu, w_gpu, b_gpu)
+	arr = arr_gpu.copy_to_host(stream=stream)
+
+	for i in range(LEN_ARRAY2):
+		assert abs(arr[0, i] - res[0, i]) <= EPS
+
 def test():
 	softmax_test()
 	softmax_derivate_test()
 	sigmoid2_test()
 	sigmoid2_derivate_test()
+	dotMatrix_test()
 
 if __name__ == "__main__":
 	test()
