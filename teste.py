@@ -1,5 +1,5 @@
 import random
-from Deep import Network
+from Deep import Network, Neural
 import matplotlib.pyplot as plt
 from PIL import Image
 from timeit import default_timer as timer
@@ -72,7 +72,8 @@ def organize(l):
 
 def main():
 
-	bia = Network([28*28,15,10],eta = 0.1)
+	#bia = Network([28*28,15,10],eta = 0.1)
+	bia = Neural([28*28,15,10], eta=0.1)
 
 	images = read_image_files("data/train-images.idx3-ubyte")
 	labels = read_label_files("data/train-labels.idx1-ubyte")

@@ -17,6 +17,7 @@ class Neural(object):
         self.__weights_device = []
         self.__biases = [np.random.randn(1,x) for x in sizes[1:]]
         self.__biases_device = []
+        self.__nablas_w_device = []
         self.__THREADSPERBLOCK = 16
         self.__stream = cuda.stream()
 
@@ -28,8 +29,12 @@ class Neural(object):
         for weigth in self.__weights:
             self.__weights_device.append(cuda.to_device(weigth, stream=self.__stream))
         
-        for bias in self.__biases_device:
+        for bias in self.__biases:
             self.__biases_device.append(cuda.to_device(bias, stream=self.__stream))
+        
+        for l in range(1, self.__num_layers):
+            nabla = np.zeros([sizes[l - 1], sizes[l]])
+            self.__nablas_w_device.append(cuda.to_device(nabla, stream=self.__stream))
 
     def __loss(self, predicted, target):
         result_host = np.zeros(1)
@@ -92,8 +97,8 @@ class Neural(object):
     def __layer(self, x, w, b):
         grid_x_max = max(x.shape[0], w.shape[0])
         grid_y_max = max(x.shape[1], w.shape[1])
-        blockspergrid_x = ceil(grid_x_max, self.__THREADSPERBLOCK)
-        blockspergrid_y = ceil(grid_y_max, self.__THREADSPERBLOCK)
+        blockspergrid_x = max(ceil(grid_x_max, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
+        blockspergrid_y = max(ceil(grid_y_max, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
         BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
         THREADS = (self.__THREADSPERBLOCK, self.__THREADSPERBLOCK)
 
@@ -107,8 +112,8 @@ class Neural(object):
     def __d_layer(self, _x, w, alpha):
         grid_x_max = max(w.shape[0], alpha.shape[0])
         grid_y_max = max(w.shape[1], alpha.shape[1])
-        blockspergrid_x = ceil(grid_x_max, self.__THREADSPERBLOCK)
-        blockspergrid_y = ceil(grid_y_max, self.__THREADSPERBLOCK)
+        blockspergrid_x = max(ceil(grid_x_max, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
+        blockspergrid_y = max(ceil(grid_y_max, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
         BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
         THREADS = (self.__THREADSPERBLOCK, self.__THREADSPERBLOCK)
 
@@ -141,7 +146,7 @@ class Neural(object):
 
         y = self.__selector(x)
 
-        derror = self.__d_loss(y,target)
+        derror = self.__d_loss(y, target)
         derror = self.__d_selector(z[self.__num_layers - 1], derror)
 
         for l in range(1, self.__num_layers):
@@ -149,14 +154,24 @@ class Neural(object):
             b = self.__biases_device[-l]
 
             derror = self.__d_activation(activations[-l], derror)
-            # need fix this
-            nabla_w = z[-l-1].transpose().dot(derror) # error for each wij
+
+            coord_x = self.__nablas_w_device[-l].shape[0]
+            coord_y = self.__nablas_w_device[-l].shape[1]
+
+            blockspergrid_x = max(ceil(coord_x, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
+            blockspergrid_y = max(ceil(coord_y, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
+            BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
+            THREADS = (self.__THREADSPERBLOCK, self.__THREADSPERBLOCK)
+
+            GF.transposeDot[BLOCKSPERGRID, THREADS](self.__nablas_w_device[-l], z[-l-1], derror)
+
             nabla_b = derror # error for each bias
             derror =  self.__d_layer(z[-l-1], w, derror)
+            nabla_w  = self.__nablas_w_device[-l]
 
-            # need fix this
-            self.__weights_device[-l] = self.__weights_device[-l] - (self.__eta * nabla_w)
-            self.__biases[-l] = self.__biases[-l] - (self.__eta * nabla_b)
+            eta_device = cuda.to_device(np.array([self.__eta]), stream=self.__stream)
+            GF.updateWeights[BLOCKSPERGRID, THREADS](self.__weights_device[-l], eta_device, nabla_w)
+            GF.updateWeights[BLOCKSPERGRID, THREADS](self.__biases_device[-l], eta_device, nabla_b)
 
     def send(self, input):
         x_host = np.array([input])

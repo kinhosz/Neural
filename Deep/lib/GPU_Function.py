@@ -32,7 +32,7 @@ def mse_derivate(predicted, target, result):
     pos = cuda.grid(1)
 
     if pos < len(predicted):
-        result[pos] = predicted[pos] - target[pos]
+        result[0, pos] = predicted[0, pos] - target[0, pos]
 
 def softmax_cpu(z):
 	z = np.exp(z)
@@ -168,6 +168,27 @@ def dotMatrix_derivate(arr, w, alpha):
 	if x < arr.shape[0] and y < arr.shape[1]:
 		arr[x, y] = tmp
 
+def transposeDot_cpu(x, derror):
+	return x.transpose().dot(derror)
+
+@cuda.jit
+def transposeDot(arr, A, B):
+	x, y = cuda.grid(2)
+
+	if x < arr.shape[0] and y < arr.shape[1]:
+		arr[x, y] = A[0, x] * B[0, y]
+
+def updateWeights_cpu(w, eta, nabla):
+	w = w - (eta * nabla)
+	return w
+
+@cuda.jit
+def updateWeights(w, eta, nabla):
+	x, y = cuda.grid(2)
+
+	if x < w.shape[0] and y < w.shape[1]:
+		w[x, y] -= eta[0] * nabla[x, y]
+
 # unit tests
 def mse_test():
     LEN_ARRAY = 5000
@@ -197,15 +218,15 @@ def mse_derivate_test():
 
     stream = cuda.stream()
 
-    predicted = np.random.randn(LEN_ARRAY)
-    target = np.random.randn(LEN_ARRAY)
-    result = np.random.randn(LEN_ARRAY)
+    predicted = np.random.randn(1, LEN_ARRAY)
+    target = np.random.randn(1, LEN_ARRAY)
+    result = np.random.randn(1, LEN_ARRAY)
 
     d_predicted = cuda.to_device(predicted, stream=stream)
     d_target = cuda.to_device(target, stream=stream)
     d_result = cuda.to_device(result, stream=stream)
 
-    r_cpu = mse_derivate_cpu(predicted, target)
+    r_cpu = mse_derivate_cpu(predicted[0], target[0])
     
     needblocksgrid = (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK
     BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, needblocksgrid)
@@ -215,7 +236,7 @@ def mse_derivate_test():
     r_gpu = d_result.copy_to_host(stream=stream)
 
     for i in range(len(r_cpu)):
-        assert abs(r_cpu[i] - r_gpu[i]) <= EPS
+        assert abs(r_cpu[i] - r_gpu[0, i]) <= EPS
 
 def softmax_test():
 	LEN_ARRAY = 2000000
@@ -381,8 +402,64 @@ def dotMatrix_derivate_test():
 	for i in range(LEN_ARRAY1):
 		assert abs(arr[0, i] - res[0, i]) <= EPS
 
+def transposeDot_test():
+	LEN_ARRAY1 = 1000
+	LEN_ARRAY2 = 2000
+
+	A = np.random.randn(1, LEN_ARRAY1)
+	B = np.random.randn(1, LEN_ARRAY2)
+	C = np.zeros([LEN_ARRAY1, LEN_ARRAY2])
+
+	stream = cuda.stream()
+
+	a_gpu = cuda.to_device(A, stream=stream)
+	b_gpu = cuda.to_device(B, stream=stream)
+	c_gpu = cuda.to_device(C, stream=stream)
+
+	res = transposeDot_cpu(A, B)
+
+	blockspergrid_x = (LEN_ARRAY1 + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	blockspergrid_y = (LEN_ARRAY2 + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
+	transposeDot[BLOCKSPERGRID, (THREADSPERBLOCK, THREADSPERBLOCK)](c_gpu, a_gpu, b_gpu)
+
+	c = c_gpu.copy_to_host(stream=stream)
+
+	for i in range(LEN_ARRAY1):
+		for j in range(LEN_ARRAY2):
+			assert abs(c[i, j] - res[i, j]) <= EPS
+
+def updateWeights_test():
+	LEN_ARRAY1 = 1000
+	LEN_ARRAY2 = 2000
+
+	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
+	nabla = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
+	eta = np.random.randn(1)
+
+	stream = cuda.stream()
+
+	w_gpu = cuda.to_device(w, stream=stream)
+	nabla_gpu = cuda.to_device(nabla, stream=stream)
+	eta_gpu = cuda.to_device(eta, stream=stream)
+
+	w = updateWeights_cpu(w, eta[0], nabla)
+
+	blockspergrid_x = (LEN_ARRAY1 + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	blockspergrid_y = (LEN_ARRAY2 + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
+
+	updateWeights[BLOCKSPERGRID, (THREADSPERBLOCK, THREADSPERBLOCK)](w_gpu, eta_gpu, nabla_gpu)
+
+	w2 = w_gpu.copy_to_host(stream=stream)
+
+	for i in range(LEN_ARRAY1):
+		for j in range(LEN_ARRAY2):
+			assert abs(w[i, j] - w2[i, j]) <= EPS
+
 def test():
-	tests = [softmax_test, softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, dotMatrix_test, dotMatrix_derivate_test]
+	tests = [softmax_test, softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, dotMatrix_test,
+	  		dotMatrix_derivate_test, transposeDot_test, updateWeights_test]
 
 	print('Tests started')
 	for currentTest in tests:
