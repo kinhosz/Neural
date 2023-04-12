@@ -77,6 +77,8 @@ def main():
 	images = read_image_files("data/train-images.idx3-ubyte")
 	labels = read_label_files("data/train-labels.idx1-ubyte")
 
+	total_time = timer()
+
 	hit = 0
 	epoch_size = 1000
 	test = 0
@@ -159,6 +161,7 @@ def main():
 	ans = organize(ans)
 	print("Esperado: {}".format(labels[pick]))
 	print("Chute: {} com {}%% de precisao\n {} com {}%% de precisao.\n {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
+	print("total time: ",  timer() - total_time)
 	teste(print_image)
 	graph(eixo_x,eixo_y)
 
