@@ -110,34 +110,63 @@ def dotMatrix(arr, A, B, C):
 	
 	tx = cuda.threadIdx.x
 	ty = cuda.threadIdx.y
-	bpg = cuda.gridDim.x    # blocks per grid
+	bpg = cuda.gridDim.y
 
-    # Each thread computes one element in the result matrix.
-    # The dot product is chunked into dot products of THREADSPERBLOCK-long vectors.
 	tmp = float64(0.)
 	for i in range(bpg):
-        # Preload data into shared memory
-		sA[ty, tx] = 0
-		sB[ty, tx] = 0
-		if y < A.shape[0] and (tx+i*THREADSPERBLOCK) < A.shape[1]:
-			sA[ty, tx] = A[y, tx + i * THREADSPERBLOCK]
-		if x < B.shape[1] and (ty+i*THREADSPERBLOCK) < B.shape[0]:
-			sB[ty, tx] = B[ty + i * THREADSPERBLOCK, x]
+		sA[tx, ty] = float64(0.)
+		sB[tx, ty] = float64(0.)
 
-        # Wait until all threads finish preloading
+		if ty + i * THREADSPERBLOCK < A.shape[1] and x < A.shape[0]:
+			sA[tx, ty] = A[x, ty + i * THREADSPERBLOCK]
+		
+		if tx + i * THREADSPERBLOCK < B.shape[0] and y < B.shape[1]:
+			sB[tx, ty] = B[tx + i * THREADSPERBLOCK, y]
+		
 		cuda.syncthreads()
-
-        # Computes partial product on the shared memory
+		
 		for j in range(THREADSPERBLOCK):
-			tmp += sA[ty, j] * sB[j, tx]
-
-        # Wait until all threads finish computing
+			tmp += sA[tx, j] * sB[j, ty]
+		
 		cuda.syncthreads()
-	if y < arr.shape[0] and x < arr.shape[1]:
-		arr[y, x] = C[y, x] + tmp
 
-def dotMatrix_derivate(x,w,alpha):
+	if x < arr.shape[0] and y < arr.shape[1]:
+		arr[x, y] = C[x, y] + tmp
+
+def dotMatrix_derivate_cpu(x,w,alpha):
 	return alpha.dot(w.transpose())
+
+@cuda.jit
+def dotMatrix_derivate(arr, w, alpha):
+	sAlpha = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
+	sWTranspose = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
+
+	x, y = cuda.grid(2)
+	
+	tx = cuda.threadIdx.x
+	ty = cuda.threadIdx.y
+	bpg = cuda.gridDim.y
+
+	tmp = float64(0.)
+	for i in range(bpg):
+		sAlpha[tx, ty] = float64(0.)
+		sWTranspose[ty, tx] = float64(0.)
+
+		if x < alpha.shape[0] and ty + i * THREADSPERBLOCK < alpha.shape[1]:
+			sAlpha[tx, ty] = alpha[x, ty + i * THREADSPERBLOCK]
+		
+		if y < w.shape[0] and tx + i * THREADSPERBLOCK < w.shape[1]:
+			sWTranspose[ty, tx] = w[y, tx + i * THREADSPERBLOCK]
+		
+		cuda.syncthreads()
+
+		for j in range(THREADSPERBLOCK):
+			tmp += sAlpha[tx, j] * sWTranspose[ty, j]
+		
+		cuda.syncthreads()
+
+	if x < arr.shape[0] and y < arr.shape[1]:
+		arr[x, y] = tmp
 
 # unit tests
 def mse_test():
@@ -312,8 +341,8 @@ def dotMatrix_test():
 
 	res = dotMatrix_cpu(x,w,b)
 
-	grid_y_max = max(x_gpu.shape[0], w_gpu.shape[0])
-	grid_x_max = max(x_gpu.shape[1], w_gpu.shape[1])
+	grid_x_max = max(x_gpu.shape[0], w_gpu.shape[0])
+	grid_y_max = max(x_gpu.shape[1], w_gpu.shape[1])
 	blockspergrid_x = (grid_x_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
 	blockspergrid_y = (grid_y_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
 	blockspergrid = (blockspergrid_x, blockspergrid_y)
@@ -324,12 +353,49 @@ def dotMatrix_test():
 	for i in range(LEN_ARRAY2):
 		assert abs(arr[0, i] - res[0, i]) <= EPS
 
+def dotMatrix_derivate_test():
+	LEN_ARRAY1 = 2000
+	LEN_ARRAY2 = 3000
+
+	x = np.random.randn(1, 1)
+	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
+	alpha = np.random.randn(1, LEN_ARRAY2)
+	arr = np.zeros([1, LEN_ARRAY1])
+
+	stream = cuda.stream()
+
+	w_gpu = cuda.to_device(w, stream=stream)
+	alpha_gpu = cuda.to_device(alpha, stream=stream)
+	arr_gpu = cuda.to_device(arr, stream=stream)
+
+	res = dotMatrix_derivate_cpu(x, w, alpha)
+
+	grid_x_max = max(w_gpu.shape[0], alpha_gpu.shape[0])
+	grid_y_max = max(w_gpu.shape[1], alpha_gpu.shape[1])
+	blockspergrid_x = (grid_x_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	blockspergrid_y = (grid_y_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	blockspergrid = (blockspergrid_x, blockspergrid_y)
+
+	dotMatrix_derivate[blockspergrid, (THREADSPERBLOCK, THREADSPERBLOCK)](arr_gpu, w_gpu, alpha_gpu)
+
+	arr = arr_gpu.copy_to_host(stream=stream)
+
+	for i in range(LEN_ARRAY1):
+		assert abs(arr[0, i] - res[0, i]) <= EPS
+
+
 def test():
-	softmax_test()
-	softmax_derivate_test()
-	sigmoid2_test()
-	sigmoid2_derivate_test()
-	dotMatrix_test()
+	tests = [softmax_test, softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, dotMatrix_test, dotMatrix_derivate_test]
+
+	print('Tests started')
+	for currentTest in tests:
+		ok = True
+		try:
+			currentTest()
+		except:
+			ok = False
+		status = "{}".format('.' if ok else 'F')
+		print(status, end='')
 
 if __name__ == "__main__":
 	test()
