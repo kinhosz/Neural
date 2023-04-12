@@ -235,7 +235,6 @@ def softmax_test():
 	blockspergrid = max(MINIMUMBLOCKSIZE, (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK)
 
 	softmax_p1[blockspergrid, threads](arr_gpu, res_gpu)
-	cuda.synchronize()
 	softmax_p2[blockspergrid, threads](arr_gpu, res_gpu)
 
 	out = arr_gpu.copy_to_host(stream=stream)
@@ -268,7 +267,6 @@ def softmax_derivate_test():
 	sum_times_alpha_gpu = cuda.to_device(sum_times_alpha, stream=stream)
 
 	softmax_sum_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu)
-	cuda.synchronize()
 	softmax_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu)
 
 	ans_gpu = z_gpu.copy_to_host(stream=stream)
@@ -382,7 +380,6 @@ def dotMatrix_derivate_test():
 
 	for i in range(LEN_ARRAY1):
 		assert abs(arr[0, i] - res[0, i]) <= EPS
-
 
 def test():
 	tests = [softmax_test, softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, dotMatrix_test, dotMatrix_derivate_test]
