@@ -2,6 +2,7 @@ import numpy as np
 import random
 from Deep.lib import CPU_Function as CF
 from Deep.lib import GPU_Function as GF
+from timeit import default_timer as timer
 
 class Network(object):
 
@@ -46,7 +47,12 @@ class Network(object):
     
     # funcao que realiza a entrada de toda camada anterior
     def __layer(self,x,w,b):
-        return CF.dotMatrix(x,w,b)
+        #return CF.dotMatrix(x,w,b)
+        t = timer()
+        a = CF.dotMatrix(x,w,b)
+        t = timer() - t
+        #print("DotMatrix ms = ", round(t * 1000, 3))
+        return a
 
     def __d_layer(self,x,w,alpha):
         return CF.dotMatrix_derivate(x,w,alpha)
@@ -60,6 +66,7 @@ class Network(object):
         return self.__selector(x)
 
     def __backPropagation(self,x,target):
+        t = timer()
 
         # feedForward
         z = [x] # save all Zs
@@ -87,6 +94,9 @@ class Network(object):
 
             self.weights[-l] = self.weights[-l] - (self.eta * nabla_w)
             self.biases[-l] = self.biases[-l] - (self.eta * nabla_b)
+        
+        t = timer() - t
+        print("Backpropagation CPU: {}".format(round(1000 * t, 3)))
 
     def send(self, l):
         x =  self.__activation(np.array([l]))

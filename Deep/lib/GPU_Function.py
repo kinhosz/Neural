@@ -3,7 +3,6 @@ import math
 from numba import cuda, float64
 from timeit import default_timer as timer
 
-THREADSPERBLOCK = 16
 MINIMUMBLOCKSIZE = 28
 EPS = 1e-10
 
@@ -63,20 +62,23 @@ def softmax_derivate_cpu(z,alpha):
 	return soft
 
 @cuda.jit
-def softmax_sum_derivate(arr, alpha, simple_sum, sum_times_alpha):
+def softmax_sum_derivate(arr, z, alpha, simple_sum, sum_times_alpha):
 	x = cuda.grid(1)
 
 	if x < arr.shape[1]:
-		arr[0, x] = math.exp(arr[0, x])
-		cuda.atomic.add(simple_sum, 0, arr[0, x])
-		cuda.atomic.add(sum_times_alpha, 0, arr[0, x] * alpha[0, x])
+		value = z[0, x]
+		value = math.exp(value)
+		arr[0, x] = value
+		cuda.atomic.add(simple_sum, 0, value)
+		cuda.atomic.add(sum_times_alpha, 0, value * alpha[0, x])
 
 @cuda.jit
-def softmax_derivate(arr, alpha, simple_sum, sum_times_alpha):
+def softmax_derivate(arr, z, alpha, simple_sum, sum_times_alpha):
 	x = cuda.grid(1)
  
 	if x < arr.shape[1]:
-		arr[0, x] = (arr[0, x] * (alpha[0, x] - (sum_times_alpha[0] / simple_sum[0]))) / simple_sum[0]
+		value = z[0, x]
+		arr[0, x] = (value * (alpha[0, x] - (sum_times_alpha[0] / simple_sum[0]))) / simple_sum[0]
 
 def sigmoid2_cpu(z):
 	return 2.0*(1.0/(1.0 + np.exp(-z))) - 1.0 # (-1,1)
@@ -85,7 +87,7 @@ def sigmoid2_cpu(z):
 def sigmoid2(arr):
 	x = cuda.grid(1)
 
-	if x < arr.shape[1]:
+	if x < arr.shape[1] and 0 < arr.shape[0]:
 		arr[0, x] = 2.0 * (1.0 / (1.0 + math.exp(-arr[0, x]))) - 1.0
 
 def sigmoid2_derivate_cpu(z,alpha):
@@ -103,6 +105,8 @@ def dotMatrix_cpu(x,w,b):
 
 @cuda.jit
 def dotMatrix(arr, A, B, C):
+	THREADSPERBLOCK = 16
+
 	sA = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
 	sB = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
 	
@@ -138,6 +142,7 @@ def dotMatrix_derivate_cpu(x,w,alpha):
 
 @cuda.jit
 def dotMatrix_derivate(arr, w, alpha):
+	THREADSPERBLOCK = 16
 	sAlpha = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
 	sWTranspose = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
 
@@ -192,6 +197,7 @@ def updateWeights(w, eta, nabla):
 # unit tests
 def mse_test():
     LEN_ARRAY = 5000
+    THREADSPERBLOCK = 16
 
     stream = cuda.stream()
 
@@ -215,6 +221,7 @@ def mse_test():
 
 def mse_derivate_test():
     LEN_ARRAY = 200000
+    THREADSPERBLOCK = 16
 
     stream = cuda.stream()
 
@@ -240,6 +247,7 @@ def mse_derivate_test():
 
 def softmax_test():
 	LEN_ARRAY = 2000000
+	THREADSPERBLOCK = 1024
 
 	stream = cuda.stream()
 
@@ -247,7 +255,9 @@ def softmax_test():
 	arr_gpu = cuda.to_device(arr, stream=stream)
 	arr_cpu = np.copy(arr)
 
+	t = timer()
 	arr_cpu = softmax_cpu(arr_cpu)
+	cpu_timer = timer() - t
 
 	res = np.zeros(1)
 	res_gpu = cuda.to_device(res, stream=stream)
@@ -263,8 +273,24 @@ def softmax_test():
 	for i in range(LEN_ARRAY):
 		assert abs(out[0][i] - arr_cpu[0][i]) <= EPS
 
+	t = timer()
+	softmax_p1[blockspergrid, threads](arr_gpu, res_gpu)
+	softmax_p2[blockspergrid, threads](arr_gpu, res_gpu)
+	gpu_timer = timer() - t
+
+	#print('cpu_timer: {}, gpu_timer: {}'.format(cpu_timer, gpu_timer))
+
+def softmax_derivate_func(z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu, blockspergrid, THREADSPERBLOCK):
+	softmax_sum_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu)
+	softmax_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu)
+
+	print(blockspergrid, THREADSPERBLOCK)
+
+	return z_gpu
+
 def softmax_derivate_test():
 	LEN_ARRAY = 200000
+	THREADSPERBLOCK = 16
 
 	stream = cuda.stream()
 
@@ -276,7 +302,7 @@ def softmax_derivate_test():
 	
 	z_cpu = softmax_derivate_cpu(z_cpu, alpha_cpu)
 
-	blockspergrid = (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK
+	blockspergrid = max(MINIMUMBLOCKSIZE, (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK)
 
 	z_gpu = cuda.to_device(z, stream=stream)
 	alpha_gpu = cuda.to_device(alpha, stream=stream)
@@ -294,9 +320,15 @@ def softmax_derivate_test():
 
 	for i in range(LEN_ARRAY):
 		assert abs(ans_gpu[0, i] - z_cpu[0, i]) <= EPS
+	
+	t = timer()
+	alpha_gpu = softmax_derivate_func(z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu, blockspergrid, THREADSPERBLOCK)
+	t = timer() - t
+	print("Transfer data: {}ms".format(round(1000 * t, 3)))
 
 def sigmoid2_test():
 	LEN_ARRAY = 2000000
+	THREADSPERBLOCK = 16
 
 	stream = cuda.stream()
 
@@ -319,6 +351,7 @@ def sigmoid2_test():
 
 def sigmoid2_derivate_test():
 	LEN_ARRAY = 200000
+	THREADSPERBLOCK = 16
 
 	z = np.random.randn(1, LEN_ARRAY)
 	alpha = np.random.randn(1, LEN_ARRAY)
@@ -343,8 +376,9 @@ def sigmoid2_derivate_test():
 		assert abs(ans_gpu[0, i] - z_cpu[0, i]) <= EPS
 
 def dotMatrix_test():
-	LEN_ARRAY1 = 2000
-	LEN_ARRAY2 = 3000
+	LEN_ARRAY1 = 1000
+	LEN_ARRAY2 = 500
+	THREADSPERBLOCK = 16
 
 	x = np.random.randn(1, LEN_ARRAY1)
 	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
@@ -358,7 +392,9 @@ def dotMatrix_test():
 	b_gpu = cuda.to_device(b, stream=stream)
 	arr_gpu = cuda.to_device(arr, stream=stream)
 
+	t = timer()
 	res = dotMatrix_cpu(x,w,b)
+	cpu_timer = timer() - t
 
 	grid_x_max = max(x_gpu.shape[0], w_gpu.shape[0])
 	grid_y_max = max(x_gpu.shape[1], w_gpu.shape[1])
@@ -371,10 +407,17 @@ def dotMatrix_test():
 
 	for i in range(LEN_ARRAY2):
 		assert abs(arr[0, i] - res[0, i]) <= EPS
+	
+	t = timer()
+	dotMatrix[blockspergrid, (THREADSPERBLOCK, THREADSPERBLOCK)](arr_gpu, x_gpu, w_gpu, b_gpu)
+	gpu_timer = timer() - t
+
+	print('cpu_timer: {}ms, gpu_timer: {}ms'.format(round(cpu_timer * 1000, 2), round(1000 * gpu_timer, 2)))
 
 def dotMatrix_derivate_test():
 	LEN_ARRAY1 = 2000
 	LEN_ARRAY2 = 3000
+	THREADSPERBLOCK = 16
 
 	x = np.random.randn(1, 1)
 	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
@@ -405,6 +448,7 @@ def dotMatrix_derivate_test():
 def transposeDot_test():
 	LEN_ARRAY1 = 1000
 	LEN_ARRAY2 = 2000
+	THREADSPERBLOCK = 16
 
 	A = np.random.randn(1, LEN_ARRAY1)
 	B = np.random.randn(1, LEN_ARRAY2)
@@ -432,6 +476,7 @@ def transposeDot_test():
 def updateWeights_test():
 	LEN_ARRAY1 = 1000
 	LEN_ARRAY2 = 2000
+	THREADSPERBLOCK = 16
 
 	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
 	nabla = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
@@ -472,4 +517,5 @@ def test():
 		print(status, end='')
 
 if __name__ == "__main__":
-	test()
+	#test()
+	softmax_derivate_test()

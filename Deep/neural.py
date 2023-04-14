@@ -1,8 +1,14 @@
 import numpy as np
 from Deep.lib import GPU_Function as GF
-from numba import cuda
+from numba import cuda, float64
+from timeit import default_timer as timer
+import math
+from colorama import Fore, init
 
+init()
 MINIMUMBLOCKSIZE = 28
+
+Compiled = {}
 
 def ceil(A, B):
     return (A + B - 1) // B
@@ -18,8 +24,11 @@ class Neural(object):
         self.__biases = [np.random.randn(1,x) for x in sizes[1:]]
         self.__biases_device = []
         self.__nablas_w_device = []
-        self.__THREADSPERBLOCK = 16
+        self.__THREADSPERBLOCK = 4096
+        self.__THREADSGRID = 16
         self.__stream = cuda.stream()
+        self.__eta_device = cuda.to_device(np.array([self.__eta]), stream=self.__stream)
+        self.__derror = cuda.to_device(np.zeros([1, self.__sizes[-1]]), stream=self.__stream)
 
         if random_weights:
             self.__weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
@@ -35,14 +44,56 @@ class Neural(object):
         for l in range(1, self.__num_layers):
             nabla = np.zeros([sizes[l - 1], sizes[l]])
             self.__nablas_w_device.append(cuda.to_device(nabla, stream=self.__stream))
+        
+        self.__stream.synchronize()
+    
+    def __getThreads(self, size):
+        return pow(2, math.floor(math.log2(size)))
+
+    def __kernelConfig(self, size):
+        threads = self.__THREADSPERBLOCK if size > self.__THREADSPERBLOCK else self.__getThreads(size)
+        BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, ceil(size, threads))
+        THREADSPERBLOCK = threads
+
+        return (BLOCKSPERGRID, THREADSPERBLOCK)
+
+    def __kernelConfigGrid(self, size_x, size_y):
+        blockspergrid_x = max(ceil(size_x, self.__THREADSGRID), MINIMUMBLOCKSIZE)
+        blockspergrid_y = max(ceil(size_y, self.__THREADSGRID), MINIMUMBLOCKSIZE)
+        BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
+        THREADS = (self.__THREADSGRID, self.__THREADSGRID)
+        
+        return (BLOCKSPERGRID, THREADS)
+
+    def __sync(self, kernel_name):
+        t = timer()
+        cuda.synchronize()
+        t = timer() - t
+        ms = round(1000 * t, 3)
+
+        color = Fore.WHITE
+
+        if ms > 1000:
+            color = Fore.RED
+        elif ms > 1:
+            color = Fore.YELLOW
+        else:
+            color = Fore.GREEN
+        
+        print(color + "synchronize ({}): {}ms".format(kernel_name, ms))
 
     def __loss(self, predicted, target):
         result_host = np.zeros(1)
         result_device = cuda.to_device(result_host, stream=self.__stream)
 
-        BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, ceil(predicted.shape[1], self.__THREADSPERBLOCK))
+        kernel_name = 'mse'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
 
-        GF.mse[BLOCKSPERGRID, self.__THREADSPERBLOCK](predicted, target, result_device)
+        GF.mse[self.__kernelConfig(predicted.shape[1])](predicted, target, result_device)
+        self.__sync(kernel_name)
+
         result_host = result_device.copy_to_host(stream=self.__stream)
 
         return result_host[0]
@@ -51,9 +102,13 @@ class Neural(object):
         loss_host = np.zeros(o.shape)
         loss_device = cuda.to_device(loss_host, stream=self.__stream)
 
-        BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, ceil(o.shape[1], self.__THREADSPERBLOCK))
+        kernel_name = 'mse_derivate'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
 
-        GF.mse_derivate[BLOCKSPERGRID, self.__THREADSPERBLOCK](y, o, loss_device)
+        GF.mse_derivate[self.__kernelConfig(o.shape[1])](y, o, loss_device)
+        self.__sync(kernel_name)
 
         return loss_device
 
@@ -61,84 +116,122 @@ class Neural(object):
         result_host = np.zeros(1)
         result_device = cuda.to_device(result_host, stream=self.__stream)
 
-        BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, ceil(z.shape[1], self.__THREADSPERBLOCK))
+        kernel_name = 'softmax_p1'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
 
-        GF.softmax_p1[BLOCKSPERGRID, self.__THREADSPERBLOCK](z, result_device)
-        GF.softmax_p2[BLOCKSPERGRID, self.__THREADSPERBLOCK](z, result_device)
+        GF.softmax_p1[self.__kernelConfig(z.shape[1])](z, result_device)
+        self.__sync(kernel_name)
+
+        kernel_name = 'softmax_p2'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
+
+        GF.softmax_p2[self.__kernelConfig(z.shape[1])](z, result_device)
+        self.__sync(kernel_name)
 
         return z
 
-    def __d_selector(self, z, alpha):
-        BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, ceil(z.shape[1], self.__THREADSPERBLOCK))
-
+    def __d_selector(self, arr, z, alpha):
         simple_sum_host = np.zeros(1)
         sum_times_alpha_host = np.zeros(1)
 
         simple_sum = cuda.to_device(simple_sum_host, stream=self.__stream)
         sum_times_alpha = cuda.to_device(sum_times_alpha_host, stream=self.__stream)
 
-        GF.softmax_sum_derivate[BLOCKSPERGRID, self.__THREADSPERBLOCK](z, alpha, simple_sum, sum_times_alpha)
-        GF.softmax_derivate[BLOCKSPERGRID, self.__THREADSPERBLOCK](z, alpha, simple_sum, sum_times_alpha)
+        kernel_name = 'softmax_sum_derivate'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
 
-        return z
+        GF.softmax_sum_derivate[self.__kernelConfig(z.shape[1])](arr, z, alpha, simple_sum, sum_times_alpha)
+        self.__sync(kernel_name)
+
+        kernel_name = 'softmax_derivate'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
+
+        GF.softmax_derivate[self.__kernelConfig(z.shape[1])](arr, z, alpha, simple_sum, sum_times_alpha)
+        self.__sync(kernel_name)
 
     def __activation(self, z):
-        BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, ceil(z.shape[1], self.__THREADSPERBLOCK))
-        GF.sigmoid2[BLOCKSPERGRID, self.__THREADSPERBLOCK](z)
+        kernel_name = 'sigmoid2'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
+
+        GF.sigmoid2[self.__kernelConfig(z.shape[1])](z)
+        self.__sync(kernel_name)
 
         return z
 
     def __d_activation(self, z, alpha):
-        BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, ceil(z.shape[1], self.__THREADSPERBLOCK))
-        GF.sigmoid2_derivate[BLOCKSPERGRID, self.__THREADSPERBLOCK](z, alpha)
+        kernel_name = 'sigmoid2_derivate'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
+
+        GF.sigmoid2_derivate[self.__kernelConfig(z.shape[1])](z, alpha)
+        self.__sync(kernel_name)
 
         return z
 
     def __layer(self, x, w, b):
-        grid_x_max = max(x.shape[0], w.shape[0])
-        grid_y_max = max(x.shape[1], w.shape[1])
-        blockspergrid_x = max(ceil(grid_x_max, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
-        blockspergrid_y = max(ceil(grid_y_max, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
-        BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
-        THREADS = (self.__THREADSPERBLOCK, self.__THREADSPERBLOCK)
-
         arr_host = np.zeros(b.shape)
         arr = cuda.to_device(arr_host, stream=self.__stream)
 
-        GF.dotMatrix[BLOCKSPERGRID, THREADS](arr, x, w, b)
-        
+        kernel_name = 'dotMatrix'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
+
+        GF.dotMatrix[self.__kernelConfigGrid(max(x.shape[0], w.shape[0]), max(x.shape[1], w.shape[1]))](arr, x, w, b)
+        self.__sync(kernel_name)
+
         return arr
 
     def __d_layer(self, _x, w, alpha):
-        grid_x_max = max(w.shape[0], alpha.shape[0])
-        grid_y_max = max(w.shape[1], alpha.shape[1])
-        blockspergrid_x = max(ceil(grid_x_max, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
-        blockspergrid_y = max(ceil(grid_y_max, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
-        BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
-        THREADS = (self.__THREADSPERBLOCK, self.__THREADSPERBLOCK)
-
         arr_host = np.zeros([1, w.shape[0]])
         arr = cuda.to_device(arr_host, stream=self.__stream)
 
-        GF.dotMatrix_derivate[BLOCKSPERGRID, THREADS](arr, w, alpha)
+        kernel_name = 'dotMatrix_derivate'
+        if kernel_name not in Compiled.keys():
+            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
+
+        GF.dotMatrix_derivate[self.__kernelConfigGrid(max(w.shape[0], alpha.shape[0]), max(w.shape[1], alpha.shape[1]))](arr, w, alpha)
+        self.__sync(kernel_name)
 
         return arr
         
     def __feedForward(self, x):
-    
+        print(Fore.WHITE+"---------------------------")
+        t = timer()
         for w, b in zip(self.__weights_device, self.__biases_device):
             x = self.__activation(x)
             x = self.__layer(x, w, b)
+        
+        t = timer() - t
+        print(Fore.WHITE+"feedForward: {}ms".format(round(1000 * t, 3)))
+        print(Fore.WHITE+"---------------------------")
 
         return self.__selector(x)
 
     def __backPropagation(self, x, target):
+        t = timer()
+        print(Fore.WHITE+"------------------")
 
+        t1 = timer()
         # feedForward
         z = [x] # save all Zs
         activations = [] # save all activations
 
-        for w, b in zip(self.__weights_device, self.__biases_device):
+        for l in range(len(self.__biases_device)):
+            w = self.__weights_device[l]
+            b = self.__biases_device[l]
             x = self.__layer(x, w, b)
             activations.append(x)
             x = self.__activation(x)
@@ -147,31 +240,56 @@ class Neural(object):
         y = self.__selector(x)
 
         derror = self.__d_loss(y, target)
-        derror = self.__d_selector(z[self.__num_layers - 1], derror)
 
+        t2 = timer()
+        self.__d_selector(self.__derror, z[self.__num_layers - 1], derror)
+
+        t2 = timer() - t2
+
+        error = self.__derror
+
+        t1 = timer() - t1
+        print(Fore.WHITE+"part1 - Backprop: {}ms".format(round(t1 * 1000, 3)))
+        print(Fore.WHITE+"------------------")
+
+        t1 = timer()
         for l in range(1, self.__num_layers):
             w = self.__weights_device[-l]
             b = self.__biases_device[-l]
 
-            derror = self.__d_activation(activations[-l], derror)
+            error = self.__d_activation(activations[-l], error)
 
             coord_x = self.__nablas_w_device[-l].shape[0]
             coord_y = self.__nablas_w_device[-l].shape[1]
 
-            blockspergrid_x = max(ceil(coord_x, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
-            blockspergrid_y = max(ceil(coord_y, self.__THREADSPERBLOCK), MINIMUMBLOCKSIZE)
-            BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
-            THREADS = (self.__THREADSPERBLOCK, self.__THREADSPERBLOCK)
+            kernel_name = 'transposeDot'
+            if kernel_name not in Compiled.keys():
+                print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+                Compiled[kernel_name] = True
 
-            GF.transposeDot[BLOCKSPERGRID, THREADS](self.__nablas_w_device[-l], z[-l-1], derror)
+            GF.transposeDot[self.__kernelConfigGrid(coord_x, coord_y)](self.__nablas_w_device[-l], z[-l-1], error)
+            self.__sync(kernel_name)
 
-            nabla_b = derror # error for each bias
-            derror =  self.__d_layer(z[-l-1], w, derror)
+            nabla_b = error # error for each bias
+            error = self.__d_layer(z[-l-1], w, error)
             nabla_w  = self.__nablas_w_device[-l]
 
-            eta_device = cuda.to_device(np.array([self.__eta]), stream=self.__stream)
-            GF.updateWeights[BLOCKSPERGRID, THREADS](self.__weights_device[-l], eta_device, nabla_w)
-            GF.updateWeights[BLOCKSPERGRID, THREADS](self.__biases_device[-l], eta_device, nabla_b)
+            kernel_name = 'updateWeights'
+            if kernel_name not in Compiled.keys():
+                print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+                Compiled[kernel_name] = True
+
+            GF.updateWeights[self.__kernelConfigGrid(coord_x, coord_y)](self.__weights_device[-l], self.__eta_device, nabla_w)
+            self.__sync(kernel_name)
+            GF.updateWeights[self.__kernelConfigGrid(coord_x, coord_y)](self.__biases_device[-l], self.__eta_device, nabla_b)
+            self.__sync(kernel_name)
+        
+        t1 = timer() - t1
+        print(Fore.WHITE+"part2 - Backprop: {}ms".format(round(1000 * t1, 3)))
+        
+        t = timer() - t
+        print(Fore.WHITE+"Backpropagation GPU: {}ms".format(round(1000 * t, 3)))
+        print(Fore.WHITE+"------------------")
 
     def send(self, input):
         x_host = np.array([input])
@@ -204,7 +322,7 @@ class Neural(object):
         return self.__loss(predict_device, target_device)    
 
 def main():
-    print("ola mundo")
+    print(Fore.WHITE+"ola mundo")
 
 if __name__ == "__main__":
     main()

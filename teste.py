@@ -71,17 +71,23 @@ def organize(l):
 	return ret
 
 def main():
+	compile_timer = timer()
 
 	#bia = Network([28*28,15,10],eta = 0.1)
-	bia = Neural([28*28,15,10], eta=0.1)
+	#bia = Network([28*28, 10000, 5000, 100, 15,10], eta=0.1)
+	bia = Neural([28*28, 10000, 5000, 100, 15,10], eta=0.1)
+
+	print('compiler time =', timer() - compile_timer)
+	processing_input = timer()
 
 	images = read_image_files("data/train-images.idx3-ubyte")
 	labels = read_label_files("data/train-labels.idx1-ubyte")
 
+	print('input processed: ', timer() - processing_input)
 	total_time = timer()
 
 	hit = 0
-	epoch_size = 1000
+	epoch_size = 100
 	test = 0
 	epoch = 0
 
