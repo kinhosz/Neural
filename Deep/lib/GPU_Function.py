@@ -1,14 +1,12 @@
 import numpy as np
 import math
-from numba import cuda, float64
+from numba import cuda
 from timeit import default_timer as timer
+from colorama import Fore, init
 
 MINIMUMBLOCKSIZE = 28
 EPS = 1e-10
-
-def config():
-	#np.seterr(all="none")
-	pass
+THREADSPERBLOCK = 1024
 
 @cuda.jit
 def memset(arr):
@@ -24,7 +22,7 @@ def memset2(arr):
 	if x < arr.shape[0] and y < arr.shape[1]:
 		arr[x, y] = 0
 
-def mse_cpu(predicted,target): 
+def mse_cpu(predicted, target): 
 	error = np.sum(np.square(predicted - target))/2.0
 	return error
 
@@ -32,7 +30,7 @@ def mse_cpu(predicted,target):
 def mse(result, predicted, target):
     pos = cuda.grid(1)
 
-    if pos < len(predicted):
+    if pos < predicted.shape[0]:
         diff = predicted[pos] - target[pos]
         diff = (diff * diff) / 2.0
         cuda.atomic.add(result, 0, diff)
@@ -44,7 +42,7 @@ def mse_derivate_cpu(predicted,target):
 def mse_derivate(result, predicted, target):
     pos = cuda.grid(1)
 
-    if pos < len(predicted):
+    if pos < predicted.shape[1]:
         result[0, pos] = predicted[0, pos] - target[0, pos]
 
 def softmax_cpu(z):
@@ -68,6 +66,7 @@ def softmax_p2(arr, sumT):
 	if x < arr.shape[1]:
 		arr[0, x] = arr[0, x] / sumT[0]
 
+###################
 def softmax_derivate_cpu(z,alpha):
 	soft = np.exp(z)
 	S = soft.sum()
@@ -170,319 +169,152 @@ def updateWeights(w, eta, nabla):
 	if x < w.shape[0] and y < w.shape[1]:
 		w[x, y] -= eta[0] * nabla[x, y]
 
-# unit tests
-def mse_test():
-    LEN_ARRAY = 5000
-    THREADSPERBLOCK = 16
+'''
+Test Correctness
+'''
 
-    stream = cuda.stream()
+def ceil(A, B):
+	return (A + B - 1) // B
 
-    predicted = np.random.randn(LEN_ARRAY)
-    target = np.random.randn(LEN_ARRAY)
-    result = np.zeros(1)
+def kernelConfig1D(size_x):
+	threads_x = THREADSPERBLOCK
+	blockspergrid_x = max(ceil(size_x, threads_x), MINIMUMBLOCKSIZE)
 
-    d_predicted = cuda.to_device(predicted, stream=stream)
-    d_target = cuda.to_device(target, stream=stream)
-    d_result = cuda.to_device(result, stream=stream)
+	return (blockspergrid_x, threads_x)
 
-    cpu_answer = mse_cpu(predicted, target)
-
-    BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK)
-
-    mse[BLOCKSPERGRID, THREADSPERBLOCK](d_predicted, d_target, d_result)
-
-    h_result = d_result.copy_to_host(stream=stream)
-
-    assert abs(h_result[0] - cpu_answer) <= EPS
-
-def mse_derivate_test():
-    LEN_ARRAY = 200000
-    THREADSPERBLOCK = 16
-
-    stream = cuda.stream()
-
-    predicted = np.random.randn(1, LEN_ARRAY)
-    target = np.random.randn(1, LEN_ARRAY)
-    result = np.random.randn(1, LEN_ARRAY)
-
-    d_predicted = cuda.to_device(predicted, stream=stream)
-    d_target = cuda.to_device(target, stream=stream)
-    d_result = cuda.to_device(result, stream=stream)
-
-    r_cpu = mse_derivate_cpu(predicted[0], target[0])
-    
-    needblocksgrid = (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-    BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, needblocksgrid)
-
-    mse_derivate[BLOCKSPERGRID, THREADSPERBLOCK](d_predicted, d_target, d_result)
-
-    r_gpu = d_result.copy_to_host(stream=stream)
-
-    for i in range(len(r_cpu)):
-        assert abs(r_cpu[i] - r_gpu[0, i]) <= EPS
-
-def softmax_test():
-	LEN_ARRAY = 2000000
-	THREADSPERBLOCK = 1024
-
-	stream = cuda.stream()
-
-	arr = np.random.randn(1, LEN_ARRAY)
-	arr_gpu = cuda.to_device(arr, stream=stream)
-	arr_cpu = np.copy(arr)
-
-	t = timer()
-	arr_cpu = softmax_cpu(arr_cpu)
-	cpu_timer = timer() - t
-
-	res = np.zeros(1)
-	res_gpu = cuda.to_device(res, stream=stream)
-
+def kernelConfig2D(size_x, size_y):
 	threads = THREADSPERBLOCK
-	blockspergrid = max(MINIMUMBLOCKSIZE, (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK)
 
-	softmax_p1[blockspergrid, threads](arr_gpu, res_gpu)
-	softmax_p2[blockspergrid, threads](arr_gpu, res_gpu)
+	sz = [size_x, size_y]
+	t = [1, 1]
 
-	out = arr_gpu.copy_to_host(stream=stream)
-
-	for i in range(LEN_ARRAY):
-		assert abs(out[0][i] - arr_cpu[0][i]) <= EPS
-
-	t = timer()
-	softmax_p1[blockspergrid, threads](arr_gpu, res_gpu)
-	softmax_p2[blockspergrid, threads](arr_gpu, res_gpu)
-	gpu_timer = timer() - t
-
-	#print('cpu_timer: {}, gpu_timer: {}'.format(cpu_timer, gpu_timer))
-
-def softmax_derivate_func(z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu, blockspergrid, THREADSPERBLOCK):
-	softmax_sum_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu)
-	softmax_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu)
-
-	print(blockspergrid, THREADSPERBLOCK)
-
-	return z_gpu
-
-def softmax_derivate_test():
-	LEN_ARRAY = 200000
-	THREADSPERBLOCK = 16
-
-	stream = cuda.stream()
-
-	z = np.random.randn(1, LEN_ARRAY)
-	alpha = np.random.randn(1, LEN_ARRAY)
-
-	z_cpu = np.copy(z)
-	alpha_cpu = np.copy(alpha)
+	upd = True
+	while threads > 1 and upd:
+		upd = False
+		for i in range(2):
+			if t[i] >= sz[i]:
+				continue
+			threads //= 2
+			t[i] *= 2
+			upd = True
 	
-	z_cpu = softmax_derivate_cpu(z_cpu, alpha_cpu)
+	blockspergrid_x = ceil(size_x, t[0])
+	blockspergrid_y = ceil(size_y, t[1])
 
-	blockspergrid = max(MINIMUMBLOCKSIZE, (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK)
-
-	z_gpu = cuda.to_device(z, stream=stream)
-	alpha_gpu = cuda.to_device(alpha, stream=stream)
-
-	simple_sum = np.zeros(1)
-	sum_times_alpha = np.zeros(1)
-
-	simple_sum_gpu = cuda.to_device(simple_sum, stream=stream)
-	sum_times_alpha_gpu = cuda.to_device(sum_times_alpha, stream=stream)
-
-	softmax_sum_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu)
-	softmax_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu)
-
-	ans_gpu = z_gpu.copy_to_host(stream=stream)
-
-	for i in range(LEN_ARRAY):
-		assert abs(ans_gpu[0, i] - z_cpu[0, i]) <= EPS
+	blocks = blockspergrid_x * blockspergrid_y
+	if blocks < MINIMUMBLOCKSIZE:
+		add = MINIMUMBLOCKSIZE - blocks
+		blocks /= blockspergrid_y
+		blockspergrid_y += ceil(add, blocks)
 	
-	t = timer()
-	alpha_gpu = softmax_derivate_func(z_gpu, alpha_gpu, simple_sum_gpu, sum_times_alpha_gpu, blockspergrid, THREADSPERBLOCK)
-	t = timer() - t
-	print("Transfer data: {}ms".format(round(1000 * t, 3)))
-
-def sigmoid2_test():
-	LEN_ARRAY = 2000000
-	THREADSPERBLOCK = 16
-
-	stream = cuda.stream()
-
-	z = np.random.randn(1, LEN_ARRAY)
-
-	z_cpu = np.copy(z)
-
-	z_cpu = sigmoid2_cpu(z_cpu)
-
-	blockspergrid = (LEN_ARRAY + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-
-	z_gpu = cuda.to_device(z, stream=stream)
-
-	sigmoid2[blockspergrid, THREADSPERBLOCK](z_gpu)
-
-	ans_gpu = z_gpu.copy_to_host(stream=stream)
-
-	for i in range(LEN_ARRAY):
-		assert abs(ans_gpu[0, i] - z_cpu[0, i]) <= EPS
-
-def sigmoid2_derivate_test():
-	LEN_ARRAY = 200000
-	THREADSPERBLOCK = 16
-
-	z = np.random.randn(1, LEN_ARRAY)
-	alpha = np.random.randn(1, LEN_ARRAY)
-
-	z_cpu = np.copy(z)
-	alpha_cpu = np.copy(alpha)
-
-	z_cpu = sigmoid2_derivate_cpu(z_cpu, alpha_cpu)
-
-	blockspergrid = (LEN_ARRAY + THREADSPERBLOCK - 1) // (THREADSPERBLOCK)
-
-	stream = cuda.stream()
-
-	z_gpu = cuda.to_device(z, stream=stream)
-	alpha_gpu = cuda.to_device(alpha, stream=stream)
-
-	sigmoid2_derivate[blockspergrid, THREADSPERBLOCK](z_gpu, alpha_gpu)
-
-	ans_gpu = z_gpu.copy_to_host(stream=stream)
-
-	for i in range(LEN_ARRAY):
-		assert abs(ans_gpu[0, i] - z_cpu[0, i]) <= EPS
-
-def dotMatrix_test():
-	LEN_ARRAY1 = 1000
-	LEN_ARRAY2 = 500
-	THREADSPERBLOCK = 16
-
-	x = np.random.randn(1, LEN_ARRAY1)
-	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
-	b = np.random.randn(1, LEN_ARRAY2)
-	arr = np.zeros(b.shape)
-
-	stream = cuda.stream()
-
-	x_gpu = cuda.to_device(x, stream=stream)
-	w_gpu = cuda.to_device(w, stream=stream)
-	b_gpu = cuda.to_device(b, stream=stream)
-	arr_gpu = cuda.to_device(arr, stream=stream)
-
-	t = timer()
-	res = dotMatrix_cpu(x,w,b)
-	cpu_timer = timer() - t
-
-	grid_x_max = max(x_gpu.shape[0], w_gpu.shape[0])
-	grid_y_max = max(x_gpu.shape[1], w_gpu.shape[1])
-	blockspergrid_x = (grid_x_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-	blockspergrid_y = (grid_y_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
 	blockspergrid = (blockspergrid_x, blockspergrid_y)
+	threadsperblock = (t[0], t[1])
 
-	dotMatrix[blockspergrid, (THREADSPERBLOCK, THREADSPERBLOCK)](arr_gpu, x_gpu, w_gpu, b_gpu)
-	arr = arr_gpu.copy_to_host(stream=stream)
+	return (blockspergrid, threadsperblock)
 
-	for i in range(LEN_ARRAY2):
-		assert abs(arr[0, i] - res[0, i]) <= EPS
-	
-	t = timer()
-	dotMatrix[blockspergrid, (THREADSPERBLOCK, THREADSPERBLOCK)](arr_gpu, x_gpu, w_gpu, b_gpu)
-	gpu_timer = timer() - t
+def memset_test():
+	LEN_ARRAY = 2000
 
-	print('cpu_timer: {}ms, gpu_timer: {}ms'.format(round(cpu_timer * 1000, 2), round(1000 * gpu_timer, 2)))
+	arr_host = np.random.randn(LEN_ARRAY)
+	arr_device = cuda.to_device(arr_host)
 
-def dotMatrix_derivate_test():
+	memset[kernelConfig1D(LEN_ARRAY)](arr_device)
+	cuda.synchronize()
+
+	arr_host = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY):
+		assert abs(arr_host[i]) <= EPS
+
+def memset2_test():
 	LEN_ARRAY1 = 2000
 	LEN_ARRAY2 = 3000
-	THREADSPERBLOCK = 16
 
-	x = np.random.randn(1, 1)
-	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
-	alpha = np.random.randn(1, LEN_ARRAY2)
-	arr = np.zeros([1, LEN_ARRAY1])
+	arr_host = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
+	arr_device = cuda.to_device(arr_host)
 
-	stream = cuda.stream()
+	memset2[kernelConfig2D(LEN_ARRAY1, LEN_ARRAY2)](arr_device)
 
-	w_gpu = cuda.to_device(w, stream=stream)
-	alpha_gpu = cuda.to_device(alpha, stream=stream)
-	arr_gpu = cuda.to_device(arr, stream=stream)
-
-	res = dotMatrix_derivate_cpu(x, w, alpha)
-
-	grid_x_max = max(w_gpu.shape[0], alpha_gpu.shape[0])
-	grid_y_max = max(w_gpu.shape[1], alpha_gpu.shape[1])
-	blockspergrid_x = (grid_x_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-	blockspergrid_y = (grid_y_max + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-	blockspergrid = (blockspergrid_x, blockspergrid_y)
-
-	dotMatrix_derivate[blockspergrid, (THREADSPERBLOCK, THREADSPERBLOCK)](arr_gpu, w_gpu, alpha_gpu)
-
-	arr = arr_gpu.copy_to_host(stream=stream)
-
-	for i in range(LEN_ARRAY1):
-		assert abs(arr[0, i] - res[0, i]) <= EPS
-
-def transposeDot_test():
-	LEN_ARRAY1 = 1000
-	LEN_ARRAY2 = 2000
-	THREADSPERBLOCK = 16
-
-	A = np.random.randn(1, LEN_ARRAY1)
-	B = np.random.randn(1, LEN_ARRAY2)
-	C = np.zeros([LEN_ARRAY1, LEN_ARRAY2])
-
-	stream = cuda.stream()
-
-	a_gpu = cuda.to_device(A, stream=stream)
-	b_gpu = cuda.to_device(B, stream=stream)
-	c_gpu = cuda.to_device(C, stream=stream)
-
-	res = transposeDot_cpu(A, B)
-
-	blockspergrid_x = (LEN_ARRAY1 + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-	blockspergrid_y = (LEN_ARRAY2 + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-	BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
-	transposeDot[BLOCKSPERGRID, (THREADSPERBLOCK, THREADSPERBLOCK)](c_gpu, a_gpu, b_gpu)
-
-	c = c_gpu.copy_to_host(stream=stream)
+	arr_host = arr_device.copy_to_host()
 
 	for i in range(LEN_ARRAY1):
 		for j in range(LEN_ARRAY2):
-			assert abs(c[i, j] - res[i, j]) <= EPS
+			assert abs(arr_host[i, j]) <= EPS
 
-def updateWeights_test():
-	LEN_ARRAY1 = 1000
-	LEN_ARRAY2 = 2000
-	THREADSPERBLOCK = 16
+def mse_test():
+	LEN_ARRAY = 2000
 
-	w = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
-	nabla = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
-	eta = np.random.randn(1)
+	predicted_host = np.random.randn(LEN_ARRAY)
+	target_host = np.random.randn(LEN_ARRAY)
 
-	stream = cuda.stream()
+	predicted_device = cuda.to_device(predicted_host)
+	target_device = cuda.to_device(target_host)
 
-	w_gpu = cuda.to_device(w, stream=stream)
-	nabla_gpu = cuda.to_device(nabla, stream=stream)
-	eta_gpu = cuda.to_device(eta, stream=stream)
+	arr_cpu = mse_cpu(predicted_host, target_host)
 
-	w = updateWeights_cpu(w, eta[0], nabla)
+	arr_gpu = np.zeros(1)
+	arr_device = cuda.to_device(arr_gpu)
 
-	blockspergrid_x = (LEN_ARRAY1 + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-	blockspergrid_y = (LEN_ARRAY2 + THREADSPERBLOCK - 1) // THREADSPERBLOCK
-	BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
+	mse[kernelConfig1D(LEN_ARRAY)](arr_device, predicted_device, target_device)
+	arr_gpu = arr_device.copy_to_host()
 
-	updateWeights[BLOCKSPERGRID, (THREADSPERBLOCK, THREADSPERBLOCK)](w_gpu, eta_gpu, nabla_gpu)
+	assert abs(arr_cpu - arr_gpu) <= EPS
 
-	w2 = w_gpu.copy_to_host(stream=stream)
+def mse_derivate_test():
+	LEN_ARRAY = 2000
 
-	for i in range(LEN_ARRAY1):
-		for j in range(LEN_ARRAY2):
-			assert abs(w[i, j] - w2[i, j]) <= EPS
+	predicted_host = np.random.randn(1, LEN_ARRAY)
+	target_host = np.random.randn(1, LEN_ARRAY)
+
+	predicted_device = cuda.to_device(predicted_host)
+	target_device = cuda.to_device(target_host)
+
+	arr_cpu = mse_derivate_cpu(predicted_host, target_host)
+
+	arr_gpu = np.random.randn(1, LEN_ARRAY)
+	arr_device = cuda.to_device(arr_gpu)
+
+	mse_derivate[kernelConfig1D(LEN_ARRAY)](arr_device, predicted_device, target_device)
+	
+	arr_gpu = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY):
+		assert abs(arr_cpu[0, i] - arr_gpu[0, i]) <= EPS
+
+def softmax_test():
+	LEN_ARRAY = 2000
+
+	z_host = np.random.randn(1, LEN_ARRAY)
+	z_device = cuda.to_device(z_host)
+	res_host = np.zeros(1)
+	res_device = cuda.to_device(res_host)
+
+	arr_gpu = np.random.randn(1, LEN_ARRAY)
+	arr_device = cuda.to_device(arr_gpu)
+
+	z_cpu = softmax_cpu(z_host)
+
+	softmax_p1[kernelConfig1D(LEN_ARRAY)](arr_device, z_device, res_device)
+	cuda.synchronize()
+	softmax_p2[kernelConfig1D(LEN_ARRAY)](arr_device, res_device)
+	cuda.synchronize()
+	
+	arr_gpu = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY):
+		assert abs(z_cpu[0, i] - arr_gpu[0, i]) <= EPS
+
+def softmax_derivate_test():
+	pass
 
 def test():
-	tests = [softmax_test, softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, dotMatrix_test,
-	  		dotMatrix_derivate_test, transposeDot_test, updateWeights_test]
+	init()
+	tests = [memset_test, memset2_test, mse_test, mse_derivate_test, softmax_test,
+	  		softmax_derivate_test]
 
-	print('Tests started')
+	failed_tests = []
+
+	print(Fore.YELLOW + 'Tests started')
 	for currentTest in tests:
 		ok = True
 		try:
@@ -490,8 +322,25 @@ def test():
 		except:
 			ok = False
 		status = "{}".format('.' if ok else 'F')
-		print(status, end='')
+		
+		if ok == False:
+			failed_tests.append(currentTest.__name__)
+
+		if ok:
+			print(Fore.GREEN + "{}".format(status), end='')
+		else:
+			print(Fore.RED + "{}".format(status), end='')
+
+	print("\n")
+
+	if len(failed_tests) == 0:
+		print(Fore.GREEN + "All tests have passed")
+	else:
+		print(Fore.RED + "Failed tests:")
+		for t in failed_tests:
+			print(Fore.BLUE + "{}".format(t))
+
 
 if __name__ == "__main__":
-	#test()
 	softmax_derivate_test()
+	test()
