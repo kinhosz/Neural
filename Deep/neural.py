@@ -29,6 +29,7 @@ class Neural(object):
         self.__derror = cuda.to_device(np.zeros([1, self.__sizes[-1]]), stream=self.__stream)
         self.__loss_device = cuda.to_device(np.zeros([1, self.__sizes[-1]]), stream=self.__stream)
         self.__var = cuda.to_device(np.zeros(1), stream=self.__stream)
+        self.__var_biases = []
 
         if random_weights:
             self.__weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
@@ -40,6 +41,7 @@ class Neural(object):
         
         for bias in self.__biases:
             self.__biases_device.append(cuda.to_device(bias, stream=self.__stream))
+            self.__var_biases.append(cuda.to_device(np.zeros(bias.shape), stream=self.__stream))
         
         for l in range(1, self.__num_layers):
             nabla = np.zeros([sizes[l - 1], sizes[l]])
@@ -155,8 +157,10 @@ class Neural(object):
         color = Fore.WHITE
         if temp > 1000:
             color = Fore.RED
-        elif temp > 50:
+        elif temp > 100:
             color = Fore.YELLOW
+        elif temp > 5:
+            color = Fore.LIGHTYELLOW_EX
         else:
             color = Fore.GREEN
         
@@ -177,7 +181,7 @@ class Neural(object):
             GF.memset[self.__kernelConfig(len(arr))](arr)
         else:
             self.__isCached(kernel_name)
-            GF.memset2[self.__kernelConfigGrid(arr.shape)](arr)
+            GF.memset2[self.__kernelConfigGrid(arr.shape[0], arr.shape[1])](arr)
         self.__sync(kernel_name)
         t = timer() - t
         self.__log("reset", t)
@@ -251,16 +255,19 @@ class Neural(object):
         GF.sigmoid2_derivate[self.__kernelConfig(arr.shape[1])](arr, alpha)
         self.__sync(kernel_name)
 
-    def __layer(self, x, w, b):
-        arr_host = np.zeros(b.shape)
-        arr = cuda.to_device(arr_host, stream=self.__stream)
+    # write: [arr]
+    def __layer(self, arr, x, w, b):
+        self.__reset(arr)
 
         kernel_name = 'dotMatrix'
         self.__isCached(kernel_name)
-        GF.dotMatrixV3[self.__kernelConfigGrid3(x.shape[0], x.shape[1], w.shape[1])](arr, x, w, b)
+        GF.dotMatrixV3[self.__kernelConfigGrid3(x.shape[0], x.shape[1], w.shape[1])](arr, x, w)
         self.__sync(kernel_name)
 
-        return arr
+        kernel_name = 'sum'
+        self.__isCached(kernel_name)
+        GF.sum[self.__kernelConfigGrid(arr.shape[0], arr.shape[1])](arr, b)
+        self.__sync(kernel_name)
 
     def __d_layer(self, _x, w, alpha):
         arr_host = np.zeros([1, w.shape[0]])
@@ -275,9 +282,12 @@ class Neural(object):
         
     def __feedForward(self, x):
         t = timer()
-        for w, b in zip(self.__weights_device, self.__biases_device):
+        #for w, b in zip(self.__weights_device, self.__biases_device):
+        for l in range(len(self.__biases_device)):
+            w, b, arr = self.__weights_device[l], self.__biases_device[l], self.__var_biases[l]
             self.__activation(x)
-            x = self.__layer(x, w, b)
+            self.__layer(arr, x, w, b)
+            x = arr
         
         t = timer() - t
 
@@ -296,7 +306,9 @@ class Neural(object):
         for l in range(len(self.__biases_device)):
             w = self.__weights_device[l]
             b = self.__biases_device[l]
-            x = self.__layer(x, w, b)
+            arr = self.__var_biases[l]
+            self.__layer(arr, x, w, b)
+            x = arr
             activations.append(x)
             self.__activation(x)
             z.append(x)

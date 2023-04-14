@@ -119,13 +119,23 @@ def dotMatrix_cpu(x,w,b):
 	return x.dot(w) + b
 
 @cuda.jit
-def dotMatrixV3(arr, A, B, C):
+def sum(arr, C):
+	x, y = cuda.grid(2)
+
+	if x >= arr.shape[0] or y >= arr.shape[1]:
+		return
+
+	arr[x, y] += C[x, y]
+
+@cuda.jit
+def dotMatrixV3(arr, A, B):
 	x, y, z = cuda.grid(3)
 
 	if x >= A.shape[0] or y >= A.shape[1] or z >= B.shape[1]:
 		return
 	
 	cuda.atomic.add(arr, (x, z), A[x, y] * B[y, z])
+	#arr[x, z] += A[x, y] * B[y, z] # atomic.add is correct version
 
 @cuda.jit
 def dotMatrix(arr, A, B, C):
