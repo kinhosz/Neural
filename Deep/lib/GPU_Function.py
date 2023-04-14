@@ -54,11 +54,11 @@ def softmax_cpu(z):
 	return z
 
 @cuda.jit
-def softmax_p1(arr, res):
+def softmax_p1(arr, z, res):
 	x = cuda.grid(1)
 
 	if x < arr.shape[1]:
-		arr[0, x] = math.exp(arr[0, x])
+		arr[0, x] = math.exp(z[0, x])
 		cuda.atomic.add(res, 0, arr[0, x])
 
 @cuda.jit
@@ -87,22 +87,22 @@ def softmax_sum_derivate(arr, z, alpha, simple_sum, sum_times_alpha):
 		cuda.atomic.add(sum_times_alpha, 0, value * alpha[0, x])
 
 @cuda.jit
-def softmax_derivate(arr, z, alpha, simple_sum, sum_times_alpha):
+def softmax_derivate(arr, alpha, simple_sum, sum_times_alpha):
 	x = cuda.grid(1)
  
 	if x < arr.shape[1]:
-		value = z[0, x]
+		value = arr[0, x]
 		arr[0, x] = (value * (alpha[0, x] - (sum_times_alpha[0] / simple_sum[0]))) / simple_sum[0]
 
 def sigmoid2_cpu(z):
 	return 2.0*(1.0/(1.0 + np.exp(-z))) - 1.0 # (-1,1)
 
 @cuda.jit
-def sigmoid2(arr):
+def sigmoid2(arr, A):
 	x = cuda.grid(1)
 
 	if x < arr.shape[1] and 0 < arr.shape[0]:
-		arr[0, x] = 2.0 * (1.0 / (1.0 + math.exp(-arr[0, x]))) - 1.0
+		arr[0, x] = 2.0 * (1.0 / (1.0 + math.exp(-A[0, x]))) - 1.0
 
 def sigmoid2_derivate_cpu(z,alpha):
     return alpha*(2.0*np.exp(-z)/((1.0 + np.exp(-z))*(1.0 + np.exp(-z))))
