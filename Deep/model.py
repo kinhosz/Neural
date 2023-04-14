@@ -96,7 +96,6 @@ class Network(object):
             self.biases[-l] = self.biases[-l] - (self.eta * nabla_b)
         
         t = timer() - t
-        print("Backpropagation CPU: {}".format(round(1000 * t, 3)))
 
     def send(self, l):
         x =  self.__activation(np.array([l]))

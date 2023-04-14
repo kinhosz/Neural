@@ -104,7 +104,29 @@ def dotMatrix_cpu(x,w,b):
 	return x.dot(w) + b
 
 @cuda.jit
+def dotMatrixV3(arr, A, B, C):
+	x, y, z = cuda.grid(3)
+
+	if x >= A.shape[0] or y >= A.shape[1] or z >= B.shape[1]:
+		return
+	
+	cuda.atomic.add(arr, (x, z), A[x, y] * B[y, z])
+
+@cuda.jit
 def dotMatrix(arr, A, B, C):
+	x, y = cuda.grid(2)
+
+	if x >= A.shape[0] or y >= B.shape[1]:
+		return
+
+	tmp = float64(0.)
+	for j in range(arr.shape[1]):
+		tmp += A[x, j] * B[j, y]
+	
+	arr[x, y] = tmp + C[x, y]
+
+@cuda.jit
+def dotMatrix2(arr, A, B, C):
 	THREADSPERBLOCK = 16
 
 	sA = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
@@ -142,6 +164,19 @@ def dotMatrix_derivate_cpu(x,w,alpha):
 
 @cuda.jit
 def dotMatrix_derivate(arr, w, alpha):
+	x, y = cuda.grid(2)
+
+	if x >= arr.shape[0] or y >= arr.shape[1]:
+		return
+
+	tmp = float64(0.)
+	for j in range(alpha.shape[1]):
+		tmp += alpha[x, j] * w[y, j]
+	
+	arr[x, y] = tmp
+
+@cuda.jit
+def dotMatrix_derivate2(arr, w, alpha):
 	THREADSPERBLOCK = 16
 	sAlpha = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
 	sWTranspose = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)

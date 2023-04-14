@@ -3,6 +3,7 @@ from Deep import Network, Neural
 import matplotlib.pyplot as plt
 from PIL import Image
 from timeit import default_timer as timer
+from colorama import Fore, init
 
 def read_image_files(url):
 	f = open(url,"rb")
@@ -77,13 +78,13 @@ def main():
 	#bia = Network([28*28, 10000, 5000, 100, 15,10], eta=0.1)
 	bia = Neural([28*28, 10000, 5000, 100, 15,10], eta=0.1)
 
-	print('compiler time =', timer() - compile_timer)
+	print(Fore.WHITE + 'compiler time =', timer() - compile_timer)
 	processing_input = timer()
 
 	images = read_image_files("data/train-images.idx3-ubyte")
 	labels = read_label_files("data/train-labels.idx1-ubyte")
 
-	print('input processed: ', timer() - processing_input)
+	print(Fore.WHITE + 'input processed: ', timer() - processing_input)
 	total_time = timer()
 
 	hit = 0
@@ -120,7 +121,7 @@ def main():
 
 			if test == epoch_size:
 				rate = hit/epoch_size
-				print("epoch {}: rate = {}, with time elapsed = {}".format(epoch,rate, timer() - start))
+				print(Fore.WHITE + "epoch {}: rate = {}, time = {}s".format(epoch,rate, round(timer() - start, 3)))
 				start = timer()
 				epoch = epoch + 1
 				test = 0
@@ -156,19 +157,19 @@ def main():
 		org = organize(ans)
 
 		'''if acerto:
-			print("[OK] => {}".format(org))
+			print(Fore.WHITE + "[OK] => {}".format(org))
 		else:
-			print("[ERROR - {}] => {}".format(labels[i],org))'''
+			print(Fore.WHITE + "[ERROR - {}] => {}".format(labels[i],org))'''
 
-	print("Total score: {}/{} => {}".format(hit,10000,hit/10000))
+	print(Fore.WHITE + "Total score: {}/{} => {}".format(hit,10000,hit/10000))
 
 	pick = random.randint(0,9999)
 	print_image = images[pick]
 	ans = bia.send(print_image)
 	ans = organize(ans)
-	print("Esperado: {}".format(labels[pick]))
-	print("Chute: {} com {}%% de precisao\n {} com {}%% de precisao.\n {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
-	print("total time: ",  timer() - total_time)
+	print(Fore.WHITE + "Esperado: {}".format(labels[pick]))
+	print(Fore.WHITE + "Chute: {} com {}%% de precisao\n {} com {}%% de precisao.\n {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
+	print(Fore.WHITE + "total time: ",  timer() - total_time)
 	teste(print_image)
 	graph(eixo_x,eixo_y)
 
@@ -188,4 +189,5 @@ def graph(eixo_x,eixo_y):
 	plt.show()
 
 if __name__ == "__main__":
+	init()
 	main()

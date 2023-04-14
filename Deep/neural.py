@@ -24,7 +24,7 @@ class Neural(object):
         self.__biases = [np.random.randn(1,x) for x in sizes[1:]]
         self.__biases_device = []
         self.__nablas_w_device = []
-        self.__THREADSPERBLOCK = 4096
+        self.__THREADSPERBLOCK = 1024
         self.__THREADSGRID = 16
         self.__stream = cuda.stream()
         self.__eta_device = cuda.to_device(np.array([self.__eta]), stream=self.__stream)
@@ -46,26 +46,98 @@ class Neural(object):
             self.__nablas_w_device.append(cuda.to_device(nabla, stream=self.__stream))
         
         self.__stream.synchronize()
-    
-    def __getThreads(self, size):
-        return pow(2, math.floor(math.log2(size)))
 
     def __kernelConfig(self, size):
-        threads = self.__THREADSPERBLOCK if size > self.__THREADSPERBLOCK else self.__getThreads(size)
+        threads = self.__THREADSPERBLOCK
         BLOCKSPERGRID = max(MINIMUMBLOCKSIZE, ceil(size, threads))
         THREADSPERBLOCK = threads
 
         return (BLOCKSPERGRID, THREADSPERBLOCK)
 
-    def __kernelConfigGrid(self, size_x, size_y):
+    def __kernelConfigSharedMemo(self, size_x, size_y):
         blockspergrid_x = max(ceil(size_x, self.__THREADSGRID), MINIMUMBLOCKSIZE)
         blockspergrid_y = max(ceil(size_y, self.__THREADSGRID), MINIMUMBLOCKSIZE)
         BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
         THREADS = (self.__THREADSGRID, self.__THREADSGRID)
         
         return (BLOCKSPERGRID, THREADS)
+    
+    def __divideThreads2(self, size_x, size_y):
+        threads = self.__THREADSPERBLOCK
+        
+        div = [1, 1]
+        szs = [size_x, size_y]
+        upd = True
 
-    def __sync(self, kernel_name):
+        while threads > 1 and upd:
+            upd = False
+            for i in range(2):
+                if div[i] >= szs[i]:
+                    continue
+                if threads > 1:
+                    div[i] *= 2
+                    threads /= 2
+                    upd = True
+
+        return div[0], div[1]
+    
+    def __kernelConfigGrid(self, size_x, size_y):
+        threads_x, threads_y = self.__divideThreads2(size_x, size_y)
+
+        blockspergrid_x = ceil(size_x, threads_x)
+        blockspergrid_y = ceil(size_y, threads_y)
+
+        blocks = blockspergrid_x * blockspergrid_y
+
+        if blocks < MINIMUMBLOCKSIZE:
+            add = MINIMUMBLOCKSIZE - blocks
+            blocks /= blockspergrid_y
+            blockspergrid_y += math.ceil(add / blocks)
+
+        BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
+        THREADS = (threads_x, threads_y)
+        
+        return (BLOCKSPERGRID, THREADS)
+    
+    def __divideThreads3(self, size_x, size_y, size_z):
+        threads = self.__THREADSPERBLOCK
+        
+        div = [1, 1, 1]
+        szs = [size_x, size_y, size_z]
+        upd = True
+
+        while threads > 1 and upd:
+            upd = False
+            for i in range(3):
+                if div[i] >= szs[i]:
+                    continue
+                if threads > 1:
+                    div[i] *= 2
+                    threads /= 2
+                    upd = True
+
+        return div[0], div[1], div[2]
+    
+    def __kernelConfigGrid3(self, size_x, size_y, size_z):
+        threads_x, threads_y, threads_z = self.__divideThreads3(size_x, size_y, size_z)
+
+        blockspergrid_x = ceil(size_x, threads_x)
+        blockspergrid_y = ceil(size_y, threads_y)
+        blockspergrid_z = ceil(size_z, threads_z)
+
+        blocks = blockspergrid_x * blockspergrid_y * blockspergrid_z
+
+        if blocks < MINIMUMBLOCKSIZE:
+            add = MINIMUMBLOCKSIZE - blocks
+            blocks /= blockspergrid_z
+            blockspergrid_z += math.ceil(add / blocks)
+
+        BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y, blockspergrid_z)
+        THREADS = (threads_x, threads_y, threads_z)
+
+        return (BLOCKSPERGRID, THREADS)
+
+    def __sync(self, kernel_name, log=False):
         t = timer()
         cuda.synchronize()
         t = timer() - t
@@ -75,22 +147,41 @@ class Neural(object):
 
         if ms > 1000:
             color = Fore.RED
-        elif ms > 1:
+        elif ms > 100:
+            color = Fore.YELLOW
+        elif ms > 20:
+            color = Fore.LIGHTYELLOW_EX
+        else:
+            color = Fore.GREEN
+        
+        if log:
+            print(color + "synchronize ({}): {}ms".format(kernel_name, ms))
+    
+    def __log(self, msg, temp):
+        temp = round(1000 * temp, 3)
+
+        color = Fore.WHITE
+        if temp > 1000:
+            color = Fore.RED
+        elif temp > 50:
             color = Fore.YELLOW
         else:
             color = Fore.GREEN
         
-        print(color + "synchronize ({}): {}ms".format(kernel_name, ms))
+        print(color + "{}: {}ms".format(msg, temp))
+    
+    def __isCached(self, kernel_name, log=True):
+        if kernel_name not in Compiled.keys():
+            if log:
+                print(Fore.BLUE + "Compiling {}...".format(kernel_name))
+            Compiled[kernel_name] = True
 
     def __loss(self, predicted, target):
         result_host = np.zeros(1)
         result_device = cuda.to_device(result_host, stream=self.__stream)
 
         kernel_name = 'mse'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
+        self.__isCached(kernel_name)
         GF.mse[self.__kernelConfig(predicted.shape[1])](predicted, target, result_device)
         self.__sync(kernel_name)
 
@@ -103,10 +194,7 @@ class Neural(object):
         loss_device = cuda.to_device(loss_host, stream=self.__stream)
 
         kernel_name = 'mse_derivate'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
+        self.__isCached(kernel_name)
         GF.mse_derivate[self.__kernelConfig(o.shape[1])](y, o, loss_device)
         self.__sync(kernel_name)
 
@@ -117,18 +205,12 @@ class Neural(object):
         result_device = cuda.to_device(result_host, stream=self.__stream)
 
         kernel_name = 'softmax_p1'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
+        self.__isCached(kernel_name)
         GF.softmax_p1[self.__kernelConfig(z.shape[1])](z, result_device)
         self.__sync(kernel_name)
 
         kernel_name = 'softmax_p2'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
+        self.__isCached(kernel_name)
         GF.softmax_p2[self.__kernelConfig(z.shape[1])](z, result_device)
         self.__sync(kernel_name)
 
@@ -142,27 +224,18 @@ class Neural(object):
         sum_times_alpha = cuda.to_device(sum_times_alpha_host, stream=self.__stream)
 
         kernel_name = 'softmax_sum_derivate'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
+        self.__isCached(kernel_name)
         GF.softmax_sum_derivate[self.__kernelConfig(z.shape[1])](arr, z, alpha, simple_sum, sum_times_alpha)
         self.__sync(kernel_name)
 
         kernel_name = 'softmax_derivate'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
+        self.__isCached(kernel_name)
         GF.softmax_derivate[self.__kernelConfig(z.shape[1])](arr, z, alpha, simple_sum, sum_times_alpha)
         self.__sync(kernel_name)
 
     def __activation(self, z):
         kernel_name = 'sigmoid2'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
+        self.__isCached(kernel_name)
         GF.sigmoid2[self.__kernelConfig(z.shape[1])](z)
         self.__sync(kernel_name)
 
@@ -170,10 +243,7 @@ class Neural(object):
 
     def __d_activation(self, z, alpha):
         kernel_name = 'sigmoid2_derivate'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
+        self.__isCached(kernel_name)
         GF.sigmoid2_derivate[self.__kernelConfig(z.shape[1])](z, alpha)
         self.__sync(kernel_name)
 
@@ -184,11 +254,8 @@ class Neural(object):
         arr = cuda.to_device(arr_host, stream=self.__stream)
 
         kernel_name = 'dotMatrix'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
-        GF.dotMatrix[self.__kernelConfigGrid(max(x.shape[0], w.shape[0]), max(x.shape[1], w.shape[1]))](arr, x, w, b)
+        self.__isCached(kernel_name)
+        GF.dotMatrixV3[self.__kernelConfigGrid3(x.shape[0], x.shape[1], w.shape[1])](arr, x, w, b)
         self.__sync(kernel_name)
 
         return arr
@@ -198,31 +265,24 @@ class Neural(object):
         arr = cuda.to_device(arr_host, stream=self.__stream)
 
         kernel_name = 'dotMatrix_derivate'
-        if kernel_name not in Compiled.keys():
-            print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
-
-        GF.dotMatrix_derivate[self.__kernelConfigGrid(max(w.shape[0], alpha.shape[0]), max(w.shape[1], alpha.shape[1]))](arr, w, alpha)
+        self.__isCached(kernel_name)
+        GF.dotMatrix_derivate[self.__kernelConfigGrid(alpha.shape[0], alpha.shape[1])](arr, w, alpha)
         self.__sync(kernel_name)
 
         return arr
         
     def __feedForward(self, x):
-        print(Fore.WHITE+"---------------------------")
         t = timer()
         for w, b in zip(self.__weights_device, self.__biases_device):
             x = self.__activation(x)
             x = self.__layer(x, w, b)
         
         t = timer() - t
-        print(Fore.WHITE+"feedForward: {}ms".format(round(1000 * t, 3)))
-        print(Fore.WHITE+"---------------------------")
 
         return self.__selector(x)
 
     def __backPropagation(self, x, target):
         t = timer()
-        print(Fore.WHITE+"------------------")
 
         t1 = timer()
         # feedForward
@@ -249,8 +309,6 @@ class Neural(object):
         error = self.__derror
 
         t1 = timer() - t1
-        print(Fore.WHITE+"part1 - Backprop: {}ms".format(round(t1 * 1000, 3)))
-        print(Fore.WHITE+"------------------")
 
         t1 = timer()
         for l in range(1, self.__num_layers):
@@ -263,10 +321,7 @@ class Neural(object):
             coord_y = self.__nablas_w_device[-l].shape[1]
 
             kernel_name = 'transposeDot'
-            if kernel_name not in Compiled.keys():
-                print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-                Compiled[kernel_name] = True
-
+            self.__isCached(kernel_name)
             GF.transposeDot[self.__kernelConfigGrid(coord_x, coord_y)](self.__nablas_w_device[-l], z[-l-1], error)
             self.__sync(kernel_name)
 
@@ -275,21 +330,15 @@ class Neural(object):
             nabla_w  = self.__nablas_w_device[-l]
 
             kernel_name = 'updateWeights'
-            if kernel_name not in Compiled.keys():
-                print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-                Compiled[kernel_name] = True
-
+            self.__isCached(kernel_name)
             GF.updateWeights[self.__kernelConfigGrid(coord_x, coord_y)](self.__weights_device[-l], self.__eta_device, nabla_w)
             self.__sync(kernel_name)
             GF.updateWeights[self.__kernelConfigGrid(coord_x, coord_y)](self.__biases_device[-l], self.__eta_device, nabla_b)
             self.__sync(kernel_name)
         
         t1 = timer() - t1
-        print(Fore.WHITE+"part2 - Backprop: {}ms".format(round(1000 * t1, 3)))
         
         t = timer() - t
-        print(Fore.WHITE+"Backpropagation GPU: {}ms".format(round(1000 * t, 3)))
-        print(Fore.WHITE+"------------------")
 
     def send(self, input):
         x_host = np.array([input])
