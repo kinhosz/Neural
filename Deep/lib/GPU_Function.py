@@ -137,53 +137,6 @@ def dotMatrixV3(arr, A, B):
 	cuda.atomic.add(arr, (x, z), A[x, y] * B[y, z])
 	#arr[x, z] += A[x, y] * B[y, z] # atomic.add is correct version
 
-@cuda.jit
-def dotMatrix(arr, A, B, C):
-	x, y = cuda.grid(2)
-
-	if x >= A.shape[0] or y >= B.shape[1]:
-		return
-
-	tmp = float64(0.)
-	for j in range(arr.shape[1]):
-		tmp += A[x, j] * B[j, y]
-	
-	arr[x, y] = tmp + C[x, y]
-
-@cuda.jit
-def dotMatrix2(arr, A, B, C):
-	THREADSPERBLOCK = 16
-
-	sA = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
-	sB = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
-	
-	x, y = cuda.grid(2)
-	
-	tx = cuda.threadIdx.x
-	ty = cuda.threadIdx.y
-	bpg = cuda.gridDim.y
-
-	tmp = float64(0.)
-	for i in range(bpg):
-		sA[tx, ty] = float64(0.)
-		sB[tx, ty] = float64(0.)
-
-		if ty + i * THREADSPERBLOCK < A.shape[1] and x < A.shape[0]:
-			sA[tx, ty] = A[x, ty + i * THREADSPERBLOCK]
-		
-		if tx + i * THREADSPERBLOCK < B.shape[0] and y < B.shape[1]:
-			sB[tx, ty] = B[tx + i * THREADSPERBLOCK, y]
-		
-		cuda.syncthreads()
-		
-		for j in range(THREADSPERBLOCK):
-			tmp += sA[tx, j] * sB[j, ty]
-		
-		cuda.syncthreads()
-
-	if x < arr.shape[0] and y < arr.shape[1]:
-		arr[x, y] = C[x, y] + tmp
-
 def dotMatrix_derivate_cpu(x,w,alpha):
 	return alpha.dot(w.transpose())
 
@@ -195,39 +148,6 @@ def dotMatrix_derivate(arr, w, alpha):
 		return
 
 	cuda.atomic.add(arr, (x, y), alpha[x, z] * w[y, z])
-
-@cuda.jit
-def dotMatrix_derivate2(arr, w, alpha):
-	THREADSPERBLOCK = 16
-	sAlpha = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
-	sWTranspose = cuda.shared.array(shape=(THREADSPERBLOCK, THREADSPERBLOCK), dtype=float64)
-
-	x, y = cuda.grid(2)
-	
-	tx = cuda.threadIdx.x
-	ty = cuda.threadIdx.y
-	bpg = cuda.gridDim.y
-
-	tmp = float64(0.)
-	for i in range(bpg):
-		sAlpha[tx, ty] = float64(0.)
-		sWTranspose[ty, tx] = float64(0.)
-
-		if x < alpha.shape[0] and ty + i * THREADSPERBLOCK < alpha.shape[1]:
-			sAlpha[tx, ty] = alpha[x, ty + i * THREADSPERBLOCK]
-		
-		if y < w.shape[0] and tx + i * THREADSPERBLOCK < w.shape[1]:
-			sWTranspose[ty, tx] = w[y, tx + i * THREADSPERBLOCK]
-		
-		cuda.syncthreads()
-
-		for j in range(THREADSPERBLOCK):
-			tmp += sAlpha[tx, j] * sWTranspose[ty, j]
-		
-		cuda.syncthreads()
-
-	if x < arr.shape[0] and y < arr.shape[1]:
-		arr[x, y] = tmp
 
 def transposeDot_cpu(x, derror):
 	return x.transpose().dot(derror)
