@@ -8,14 +8,13 @@ from colorama import Fore, init
 init()
 MINIMUMBLOCKSIZE = 28
 
-Compiled = {}
-
 def ceil(A, B):
     return (A + B - 1) // B
 
 class Neural(object):
 
     def __init__(self, sizes, eta=0.01, random_weights=True):
+        self.__compiled = {}
         self.__eta = eta
         self.__num_layers = len(sizes)
         self.__sizes = sizes
@@ -25,10 +24,11 @@ class Neural(object):
         self.__biases_device = []
         self.__nablas_w_device = []
         self.__THREADSPERBLOCK = 1024
-        self.__THREADSGRID = 16
         self.__stream = cuda.stream()
         self.__eta_device = cuda.to_device(np.array([self.__eta]), stream=self.__stream)
         self.__derror = cuda.to_device(np.zeros([1, self.__sizes[-1]]), stream=self.__stream)
+        self.__loss_device = cuda.to_device(np.zeros([1, self.__sizes[-1]]), stream=self.__stream)
+        self.__var = cuda.to_device(np.zeros(1), stream=self.__stream)
 
         if random_weights:
             self.__weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
@@ -53,14 +53,6 @@ class Neural(object):
         THREADSPERBLOCK = threads
 
         return (BLOCKSPERGRID, THREADSPERBLOCK)
-
-    def __kernelConfigSharedMemo(self, size_x, size_y):
-        blockspergrid_x = max(ceil(size_x, self.__THREADSGRID), MINIMUMBLOCKSIZE)
-        blockspergrid_y = max(ceil(size_y, self.__THREADSGRID), MINIMUMBLOCKSIZE)
-        BLOCKSPERGRID = (blockspergrid_x, blockspergrid_y)
-        THREADS = (self.__THREADSGRID, self.__THREADSGRID)
-        
-        return (BLOCKSPERGRID, THREADS)
     
     def __divideThreads2(self, size_x, size_y):
         threads = self.__THREADSPERBLOCK
@@ -171,57 +163,69 @@ class Neural(object):
         print(color + "{}: {}ms".format(msg, temp))
     
     def __isCached(self, kernel_name, log=True):
-        if kernel_name not in Compiled.keys():
+        if kernel_name not in self.__compiled.keys():
             if log:
                 print(Fore.BLUE + "Compiling {}...".format(kernel_name))
-            Compiled[kernel_name] = True
+            self.__compiled[kernel_name] = True
+    
+    # write: [arr]
+    def __reset(self, arr):
+        t = timer()
+        kernel_name = 'memset'
+        if len(arr) == 1:
+            self.__isCached(kernel_name)
+            GF.memset[self.__kernelConfig(len(arr))](arr)
+        else:
+            self.__isCached(kernel_name)
+            GF.memset2[self.__kernelConfigGrid(arr.shape)](arr)
+        self.__sync(kernel_name)
+        t = timer() - t
+        self.__log("reset", t)
 
+    # read-only
     def __loss(self, predicted, target):
         result_host = np.zeros(1)
         result_device = cuda.to_device(result_host, stream=self.__stream)
 
         kernel_name = 'mse'
         self.__isCached(kernel_name)
-        GF.mse[self.__kernelConfig(predicted.shape[1])](predicted, target, result_device)
+        GF.mse[self.__kernelConfig(predicted.shape[1])](result_device, predicted, target)
         self.__sync(kernel_name)
 
         result_host = result_device.copy_to_host(stream=self.__stream)
 
         return result_host[0]
 
+    # read-only
     def __d_loss(self, y, o):
-        loss_host = np.zeros(o.shape)
-        loss_device = cuda.to_device(loss_host, stream=self.__stream)
+        loss_device = self.__loss_device
+        self.__reset(loss_device)
 
         kernel_name = 'mse_derivate'
         self.__isCached(kernel_name)
-        GF.mse_derivate[self.__kernelConfig(o.shape[1])](y, o, loss_device)
+        GF.mse_derivate[self.__kernelConfig(loss_device.shape[1])](loss_device, y, o)
         self.__sync(kernel_name)
 
         return loss_device
 
-    def __selector(self, z):
-        result_host = np.zeros(1)
-        result_device = cuda.to_device(result_host, stream=self.__stream)
+    # write: [arr]
+    def __selector(self, arr):
+        var = cuda.to_device(np.zeros(1))
 
         kernel_name = 'softmax_p1'
         self.__isCached(kernel_name)
-        GF.softmax_p1[self.__kernelConfig(z.shape[1])](z, result_device)
+        GF.softmax_p1[self.__kernelConfig(arr.shape[1])](arr, var)
         self.__sync(kernel_name)
 
         kernel_name = 'softmax_p2'
         self.__isCached(kernel_name)
-        GF.softmax_p2[self.__kernelConfig(z.shape[1])](z, result_device)
+        GF.softmax_p2[self.__kernelConfig(arr.shape[1])](arr, var)
         self.__sync(kernel_name)
 
-        return z
-
+    # write: [arr]
     def __d_selector(self, arr, z, alpha):
-        simple_sum_host = np.zeros(1)
-        sum_times_alpha_host = np.zeros(1)
-
-        simple_sum = cuda.to_device(simple_sum_host, stream=self.__stream)
-        sum_times_alpha = cuda.to_device(sum_times_alpha_host, stream=self.__stream)
+        simple_sum = cuda.to_device(np.zeros(1))
+        sum_times_alpha = cuda.to_device(np.zeros(1))
 
         kernel_name = 'softmax_sum_derivate'
         self.__isCached(kernel_name)
@@ -233,21 +237,19 @@ class Neural(object):
         GF.softmax_derivate[self.__kernelConfig(z.shape[1])](arr, z, alpha, simple_sum, sum_times_alpha)
         self.__sync(kernel_name)
 
-    def __activation(self, z):
+    # write: [arr]
+    def __activation(self, arr):
         kernel_name = 'sigmoid2'
         self.__isCached(kernel_name)
-        GF.sigmoid2[self.__kernelConfig(z.shape[1])](z)
+        GF.sigmoid2[self.__kernelConfig(arr.shape[1])](arr)
         self.__sync(kernel_name)
 
-        return z
-
-    def __d_activation(self, z, alpha):
+    # write: [arr]
+    def __d_activation(self, arr, alpha):
         kernel_name = 'sigmoid2_derivate'
         self.__isCached(kernel_name)
-        GF.sigmoid2_derivate[self.__kernelConfig(z.shape[1])](z, alpha)
+        GF.sigmoid2_derivate[self.__kernelConfig(arr.shape[1])](arr, alpha)
         self.__sync(kernel_name)
-
-        return z
 
     def __layer(self, x, w, b):
         arr_host = np.zeros(b.shape)
@@ -274,12 +276,14 @@ class Neural(object):
     def __feedForward(self, x):
         t = timer()
         for w, b in zip(self.__weights_device, self.__biases_device):
-            x = self.__activation(x)
+            self.__activation(x)
             x = self.__layer(x, w, b)
         
         t = timer() - t
 
-        return self.__selector(x)
+        self.__selector(x)
+
+        return x
 
     def __backPropagation(self, x, target):
         t = timer()
@@ -294,10 +298,11 @@ class Neural(object):
             b = self.__biases_device[l]
             x = self.__layer(x, w, b)
             activations.append(x)
-            x = self.__activation(x)
+            self.__activation(x)
             z.append(x)
 
-        y = self.__selector(x)
+        self.__selector(x)
+        y = x
 
         derror = self.__d_loss(y, target)
 
@@ -315,7 +320,8 @@ class Neural(object):
             w = self.__weights_device[-l]
             b = self.__biases_device[-l]
 
-            error = self.__d_activation(activations[-l], error)
+            self.__d_activation(activations[-l], error)
+            error = activations[-l]
 
             coord_x = self.__nablas_w_device[-l].shape[0]
             coord_y = self.__nablas_w_device[-l].shape[1]
@@ -343,7 +349,7 @@ class Neural(object):
     def send(self, input):
         x_host = np.array([input])
         x_device = cuda.to_device(x_host, stream=self.__stream)
-        x_device = self.__activation(x_device)
+        self.__activation(x_device)
         
         y_device = self.__feedForward(x_device)
         y_host = y_device.copy_to_host(stream=self.__stream)
@@ -356,7 +362,7 @@ class Neural(object):
         x_device = cuda.to_device(x_host, stream=self.__stream)
         y_device = cuda.to_device(y_host, stream=self.__stream)
 
-        x_device = self.__activation(x_device)
+        self.__activation(x_device)
         self.__backPropagation(x_device, y_device)
 
     def cost(self, input, output):
@@ -365,7 +371,7 @@ class Neural(object):
         x_device = cuda.to_device(x_host, stream=self.__stream)
         target_device = cuda.to_device(target_host, stream=self.__stream)
 
-        x_device = self.__activation(x_device)
+        self.__activation(x_device)
         predict_device = self.__feedForward(x_device)
 
         return self.__loss(predict_device, target_device)    

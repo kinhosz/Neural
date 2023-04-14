@@ -10,12 +10,26 @@ def config():
 	#np.seterr(all="none")
 	pass
 
+@cuda.jit
+def memset(arr):
+	x = cuda.grid(1)
+
+	if x < arr.shape[0]:
+		arr[x] = 0
+
+@cuda.jit
+def memset2(arr):
+	x, y = cuda.grid(2)
+
+	if x < arr.shape[0] and y < arr.shape[1]:
+		arr[x, y] = 0
+
 def mse_cpu(predicted,target): 
 	error = np.sum(np.square(predicted - target))/2.0
 	return error
 
 @cuda.jit
-def mse(predicted, target, result):
+def mse(result, predicted, target):
     pos = cuda.grid(1)
 
     if pos < len(predicted):
@@ -27,7 +41,7 @@ def mse_derivate_cpu(predicted,target):
 	return (predicted - target)
 
 @cuda.jit
-def mse_derivate(predicted, target, result):
+def mse_derivate(result, predicted, target):
     pos = cuda.grid(1)
 
     if pos < len(predicted):
@@ -98,7 +112,8 @@ def sigmoid2_derivate(arr, alpha):
 	x = cuda.grid(1)
 
 	if x < arr.shape[1]:
-		arr[0, x] = alpha[0, x] * (2.0 * math.exp(-arr[0, x]) / ( (1.0 + math.exp(-arr[0, x])) * (1.0 + math.exp(-arr[0, x]))))
+		value = arr[0, x]
+		arr[0, x] = alpha[0, x] * (2.0 * math.exp(-value) / ( (1.0 + math.exp(-value)) * (1.0 + math.exp(-value))))
 
 def dotMatrix_cpu(x,w,b):
 	return x.dot(w) + b
