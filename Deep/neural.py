@@ -29,7 +29,7 @@ class Neural(object):
         self.__derror = cuda.to_device(np.zeros([1, self.__sizes[-1]]), stream=self.__stream)
         self.__loss_device = cuda.to_device(np.zeros([1, self.__sizes[-1]]), stream=self.__stream)
         self.__var = cuda.to_device(np.zeros(1), stream=self.__stream)
-        self.__var_biases = []
+        self.__var_layers= []
 
         if random_weights:
             self.__weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
@@ -41,7 +41,9 @@ class Neural(object):
         
         for bias in self.__biases:
             self.__biases_device.append(cuda.to_device(bias, stream=self.__stream))
-            self.__var_biases.append(cuda.to_device(np.zeros(bias.shape), stream=self.__stream))
+        
+        for l in range(0, self.__num_layers):
+            self.__var_layers.append(cuda.to_device(np.zeros([1, self.__sizes[l]]), stream=self.__stream))
         
         for l in range(1, self.__num_layers):
             nabla = np.zeros([sizes[l - 1], sizes[l]])
@@ -269,22 +271,19 @@ class Neural(object):
         GF.sum[self.__kernelConfigGrid(arr.shape[0], arr.shape[1])](arr, b)
         self.__sync(kernel_name)
 
-    def __d_layer(self, _x, w, alpha):
-        arr_host = np.zeros([1, w.shape[0]])
-        arr = cuda.to_device(arr_host, stream=self.__stream)
+    # write: [arr]
+    def __d_layer(self, arr, w, alpha):
+        self.__reset(arr)
 
         kernel_name = 'dotMatrix_derivate'
         self.__isCached(kernel_name)
-        GF.dotMatrix_derivate[self.__kernelConfigGrid(alpha.shape[0], alpha.shape[1])](arr, w, alpha)
+        GF.dotMatrix_derivate[self.__kernelConfigGrid3(arr.shape[0], arr.shape[1], alpha.shape[1])](arr, w, alpha)
         self.__sync(kernel_name)
-
-        return arr
         
     def __feedForward(self, x):
         t = timer()
-        #for w, b in zip(self.__weights_device, self.__biases_device):
         for l in range(len(self.__biases_device)):
-            w, b, arr = self.__weights_device[l], self.__biases_device[l], self.__var_biases[l]
+            w, b, arr = self.__weights_device[l], self.__biases_device[l], self.__var_layers[l + 1]
             self.__activation(x)
             self.__layer(arr, x, w, b)
             x = arr
@@ -306,7 +305,7 @@ class Neural(object):
         for l in range(len(self.__biases_device)):
             w = self.__weights_device[l]
             b = self.__biases_device[l]
-            arr = self.__var_biases[l]
+            arr = self.__var_layers[l + 1]
             self.__layer(arr, x, w, b)
             x = arr
             activations.append(x)
@@ -344,7 +343,9 @@ class Neural(object):
             self.__sync(kernel_name)
 
             nabla_b = error # error for each bias
-            error = self.__d_layer(z[-l-1], w, error)
+            arr = self.__var_layers[-l-1]
+            self.__d_layer(arr, w, error)
+            error = arr
             nabla_w  = self.__nablas_w_device[-l]
 
             kernel_name = 'updateWeights'

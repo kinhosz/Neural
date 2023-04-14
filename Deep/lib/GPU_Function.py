@@ -189,16 +189,12 @@ def dotMatrix_derivate_cpu(x,w,alpha):
 
 @cuda.jit
 def dotMatrix_derivate(arr, w, alpha):
-	x, y = cuda.grid(2)
+	x, y, z = cuda.grid(3)
 
-	if x >= arr.shape[0] or y >= arr.shape[1]:
+	if x >= arr.shape[0] or y >= arr.shape[1] or z >= alpha.shape[1]:
 		return
 
-	tmp = float64(0.)
-	for j in range(alpha.shape[1]):
-		tmp += alpha[x, j] * w[y, j]
-	
-	arr[x, y] = tmp
+	cuda.atomic.add(arr, (x, y), alpha[x, z] * w[y, z])
 
 @cuda.jit
 def dotMatrix_derivate2(arr, w, alpha):
