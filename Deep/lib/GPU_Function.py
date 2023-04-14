@@ -66,8 +66,7 @@ def softmax_p2(arr, sumT):
 	if x < arr.shape[1]:
 		arr[0, x] = arr[0, x] / sumT[0]
 
-###################
-def softmax_derivate_cpu(z,alpha):
+def softmax_derivate_cpu(z, alpha):
 	soft = np.exp(z)
 	S = soft.sum()
 	beta = (alpha*soft).sum()/S
@@ -103,6 +102,7 @@ def sigmoid2(arr, A):
 	if x < arr.shape[1] and 0 < arr.shape[0]:
 		arr[0, x] = 2.0 * (1.0 / (1.0 + math.exp(-A[0, x]))) - 1.0
 
+###################
 def sigmoid2_derivate_cpu(z,alpha):
     return alpha*(2.0*np.exp(-z)/((1.0 + np.exp(-z))*(1.0 + np.exp(-z))))
 
@@ -305,12 +305,70 @@ def softmax_test():
 		assert abs(z_cpu[0, i] - arr_gpu[0, i]) <= EPS
 
 def softmax_derivate_test():
-	pass
+	LEN_ARRAY = 2000
+
+	z_host = np.random.randn(1, LEN_ARRAY)
+	alpha_host = np.random.randn(1, LEN_ARRAY)
+	simple_sum_host = np.zeros(1)
+	sum_times_alpha_host = np.zeros(1)
+	arr_gpu = np.random.randn(1, LEN_ARRAY)
+
+	z_device = cuda.to_device(z_host)
+	alpha_device = cuda.to_device(alpha_host)
+	simple_sum_device = cuda.to_device(simple_sum_host)
+	sum_times_alpha_device = cuda.to_device(sum_times_alpha_host)
+	arr_device = cuda.to_device(arr_gpu)
+
+	z_cpu = softmax_derivate_cpu(z_host, alpha_host)
+
+	softmax_sum_derivate[kernelConfig1D(LEN_ARRAY)](arr_device, z_device, alpha_device, simple_sum_device, sum_times_alpha_device)
+	cuda.synchronize()
+	softmax_derivate[kernelConfig1D(LEN_ARRAY)](arr_device, alpha_device, simple_sum_device, sum_times_alpha_device)
+	cuda.synchronize()
+
+	arr_gpu = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY):
+		assert abs(arr_gpu[0, i] - z_cpu[0, i]) <= EPS
+
+def sigmoid2_test():
+	LEN_ARRAY = 2000
+
+	A_host = np.random.randn(1, LEN_ARRAY)
+	A_device = cuda.to_device(A_host)
+	arr_gpu = np.random.randn(1, LEN_ARRAY)
+	arr_device = cuda.to_device(arr_gpu)
+
+	z_cpu = sigmoid2_cpu(A_host)
+
+	sigmoid2[kernelConfig1D(LEN_ARRAY)](arr_device, A_device)
+	arr_gpu = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY):
+		assert abs(z_cpu[0, i] - arr_gpu[0, i]) <= EPS
+
+def sigmoid2_derivate_test():
+	LEN_ARRAY = 2000
+
+	A_host = np.random.randn(1, LEN_ARRAY)
+	A_device = cuda.to_device(A_host)
+	alpha_host = np.random.randn(1, LEN_ARRAY)
+	alpha_device = cuda.to_device(alpha_host)
+	arr_gpu = np.random.randn(1, LEN_ARRAY)
+	arr_device = cuda.to_device(arr_gpu)
+
+	z_cpu = sigmoid2_derivate_cpu(A_host, alpha_host)
+
+	sigmoid2_derivate[kernelConfig1D(LEN_ARRAY)](arr_device, alpha_device)
+	arr_gpu = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY):
+		assert abs(z_cpu[0, i] - arr_gpu[0, i]) <= EPS
 
 def test():
 	init()
 	tests = [memset_test, memset2_test, mse_test, mse_derivate_test, softmax_test,
-	  		softmax_derivate_test]
+	  		softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test]
 
 	failed_tests = []
 
@@ -342,5 +400,5 @@ def test():
 
 
 if __name__ == "__main__":
-	softmax_derivate_test()
+	#sigmoid2_derivate_test()
 	test()
