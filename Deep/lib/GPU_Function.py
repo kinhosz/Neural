@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from numba import cuda
+from numba import cuda, float64
 from timeit import default_timer as timer
 from colorama import Fore, init
 
@@ -9,18 +9,25 @@ EPS = 1e-10
 THREADSPERBLOCK = 1024
 
 @cuda.jit
+def copy(arr, A):
+	x = cuda.grid(1)
+
+	if x < arr.shape[1]:
+		arr[0, x] = A[0, x]
+
+@cuda.jit
 def memset(arr):
 	x = cuda.grid(1)
 
 	if x < arr.shape[0]:
-		arr[x] = 0
+		arr[x] = float64(0.)
 
 @cuda.jit
 def memset2(arr):
 	x, y = cuda.grid(2)
 
 	if x < arr.shape[0] and y < arr.shape[1]:
-		arr[x, y] = 0
+		arr[x, y] = float64(0.)
 
 def mse_cpu(predicted, target): 
 	error = np.sum(np.square(predicted - target))/2.0
@@ -102,19 +109,18 @@ def sigmoid2(arr, A):
 	if x < arr.shape[1] and 0 < arr.shape[0]:
 		arr[0, x] = 2.0 * (1.0 / (1.0 + math.exp(-A[0, x]))) - 1.0
 
-###################
 def sigmoid2_derivate_cpu(z,alpha):
     return alpha*(2.0*np.exp(-z)/((1.0 + np.exp(-z))*(1.0 + np.exp(-z))))
 
 @cuda.jit
-def sigmoid2_derivate(arr, alpha):
+def sigmoid2_derivate(arr, A, alpha):
 	x = cuda.grid(1)
 
-	if x < arr.shape[1]:
-		value = arr[0, x]
+	if x < A.shape[1]:
+		value = A[0, x]
 		arr[0, x] = alpha[0, x] * (2.0 * math.exp(-value) / ( (1.0 + math.exp(-value)) * (1.0 + math.exp(-value))))
 
-def dotMatrix_cpu(x,w,b):
+def dotMatrix_cpu(x, w, b):
 	return x.dot(w) + b
 
 @cuda.jit
@@ -127,15 +133,15 @@ def sum(arr, C):
 	arr[x, y] += C[x, y]
 
 @cuda.jit
-def dotMatrixV3(arr, A, B):
+def dotMatrix(arr, A, B):
 	x, y, z = cuda.grid(3)
 
 	if x >= A.shape[0] or y >= A.shape[1] or z >= B.shape[1]:
 		return
 	
 	cuda.atomic.add(arr, (x, z), A[x, y] * B[y, z])
-	#arr[x, z] += A[x, y] * B[y, z] # atomic.add is correct version
 
+###################
 def dotMatrix_derivate_cpu(x,w,alpha):
 	return alpha.dot(w.transpose())
 
@@ -192,7 +198,7 @@ def kernelConfig2D(size_x, size_y):
 	while threads > 1 and upd:
 		upd = False
 		for i in range(2):
-			if t[i] >= sz[i]:
+			if t[i] >= sz[i] or threads == 1:
 				continue
 			threads //= 2
 			t[i] *= 2
@@ -204,11 +210,42 @@ def kernelConfig2D(size_x, size_y):
 	blocks = blockspergrid_x * blockspergrid_y
 	if blocks < MINIMUMBLOCKSIZE:
 		add = MINIMUMBLOCKSIZE - blocks
-		blocks /= blockspergrid_y
+		blocks //= blockspergrid_y
 		blockspergrid_y += ceil(add, blocks)
 	
 	blockspergrid = (blockspergrid_x, blockspergrid_y)
 	threadsperblock = (t[0], t[1])
+
+	return (blockspergrid, threadsperblock)
+
+def kernelConfig3D(size_x, size_y, size_z):
+	threads = THREADSPERBLOCK
+
+	sz = [size_x, size_y, size_z]
+	t = [1, 1, 1]
+
+	upd = True
+	while threads > 1 and upd:
+		upd = False
+		for i in range(3):
+			if t[i] >= sz[i] or threads == 1:
+				continue
+			threads //= 2
+			t[i] *= 2
+			upd = True
+	
+	blockspergrid_x = ceil(size_x, t[0])
+	blockspergrid_y = ceil(size_y, t[1])
+	blockspergrid_z = ceil(size_z, t[2])
+
+	blocks = blockspergrid_x * blockspergrid_y * blockspergrid_z
+	if blocks < MINIMUMBLOCKSIZE:
+		add = MINIMUMBLOCKSIZE - blocks
+		blocks //= blockspergrid_z
+		blockspergrid_z += ceil(add, blocks)
+	
+	blockspergrid = (blockspergrid_x, blockspergrid_y, blockspergrid_z)
+	threadsperblock = (t[0], t[1], t[2])
 
 	return (blockspergrid, threadsperblock)
 
@@ -224,7 +261,10 @@ def memset_test():
 	arr_host = arr_device.copy_to_host()
 
 	for i in range(LEN_ARRAY):
-		assert abs(arr_host[i]) <= EPS
+		if abs(arr_host[i]) > EPS:
+			return False
+	
+	return True
 
 def memset2_test():
 	LEN_ARRAY1 = 2000
@@ -239,7 +279,10 @@ def memset2_test():
 
 	for i in range(LEN_ARRAY1):
 		for j in range(LEN_ARRAY2):
-			assert abs(arr_host[i, j]) <= EPS
+			if abs(arr_host[i, j]) > EPS:
+				return False
+
+	return True
 
 def mse_test():
 	LEN_ARRAY = 2000
@@ -258,7 +301,10 @@ def mse_test():
 	mse[kernelConfig1D(LEN_ARRAY)](arr_device, predicted_device, target_device)
 	arr_gpu = arr_device.copy_to_host()
 
-	assert abs(arr_cpu - arr_gpu) <= EPS
+	if abs(arr_cpu - arr_gpu) > EPS:
+		return False
+
+	return True
 
 def mse_derivate_test():
 	LEN_ARRAY = 2000
@@ -279,7 +325,10 @@ def mse_derivate_test():
 	arr_gpu = arr_device.copy_to_host()
 
 	for i in range(LEN_ARRAY):
-		assert abs(arr_cpu[0, i] - arr_gpu[0, i]) <= EPS
+		if abs(arr_cpu[0, i] - arr_gpu[0, i]) > EPS:
+			return False
+	
+	return True
 
 def softmax_test():
 	LEN_ARRAY = 2000
@@ -302,7 +351,10 @@ def softmax_test():
 	arr_gpu = arr_device.copy_to_host()
 
 	for i in range(LEN_ARRAY):
-		assert abs(z_cpu[0, i] - arr_gpu[0, i]) <= EPS
+		if abs(z_cpu[0, i] - arr_gpu[0, i]) > EPS:
+			return False
+	
+	return True
 
 def softmax_derivate_test():
 	LEN_ARRAY = 2000
@@ -329,7 +381,10 @@ def softmax_derivate_test():
 	arr_gpu = arr_device.copy_to_host()
 
 	for i in range(LEN_ARRAY):
-		assert abs(arr_gpu[0, i] - z_cpu[0, i]) <= EPS
+		if abs(arr_gpu[0, i] - z_cpu[0, i]) > EPS:
+			return False
+	
+	return True
 
 def sigmoid2_test():
 	LEN_ARRAY = 2000
@@ -345,7 +400,10 @@ def sigmoid2_test():
 	arr_gpu = arr_device.copy_to_host()
 
 	for i in range(LEN_ARRAY):
-		assert abs(z_cpu[0, i] - arr_gpu[0, i]) <= EPS
+		if abs(z_cpu[0, i] - arr_gpu[0, i]) > EPS:
+			return False
+	
+	return True
 
 def sigmoid2_derivate_test():
 	LEN_ARRAY = 2000
@@ -359,26 +417,123 @@ def sigmoid2_derivate_test():
 
 	z_cpu = sigmoid2_derivate_cpu(A_host, alpha_host)
 
-	sigmoid2_derivate[kernelConfig1D(LEN_ARRAY)](arr_device, alpha_device)
+	sigmoid2_derivate[kernelConfig1D(LEN_ARRAY)](arr_device, A_device, alpha_device)
 	arr_gpu = arr_device.copy_to_host()
 
 	for i in range(LEN_ARRAY):
-		assert abs(z_cpu[0, i] - arr_gpu[0, i]) <= EPS
+		if abs(z_cpu[0, i] - arr_gpu[0, i]) > EPS:
+			return False
+	
+	return True
+
+def copy_test():
+	LEN_ARRAY = 2000
+
+	A_host = np.random.randn(1, LEN_ARRAY)
+	arr_host = np.random.randn(1, LEN_ARRAY)
+
+	A_device = cuda.to_device(A_host)
+	arr_device = cuda.to_device(arr_host)
+
+	copy[kernelConfig1D(LEN_ARRAY)](arr_device, A_device)
+
+	A_host = A_device.copy_to_host()
+	arr_host = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY):
+		if abs(A_host[0, i] - arr_host[0, i]) > EPS:
+			return False
+	
+	return True
+
+def dotMatrix_loop_test():
+	LEN_ARRAY1 = 200
+
+	A_host = np.ones([1, LEN_ARRAY1], dtype=np.float64)
+	B_host = np.random.randn(LEN_ARRAY1, LEN_ARRAY1)
+	C_host = np.random.randn(1, LEN_ARRAY1)
+
+	A_device = cuda.to_device(A_host)
+	B_device = cuda.to_device(B_host)
+	C_device = cuda.to_device(C_host)
+
+	arr_host = np.random.randn(1, LEN_ARRAY1)
+	arr_device = cuda.to_device(arr_host)
+
+	LOOP = 200
+
+	for i in range(LOOP):
+		A_host = dotMatrix_cpu(A_host, B_host, C_host)
+	
+	for i in range(LOOP):
+		memset2[kernelConfig2D(1, LEN_ARRAY1)](arr_device)
+		cuda.synchronize()
+		dotMatrix[kernelConfig3D(1, LEN_ARRAY1, LEN_ARRAY1)](arr_device, A_device, B_device)
+		cuda.synchronize()
+		sum[kernelConfig2D(1, LEN_ARRAY1)](arr_device, C_device)
+		cuda.synchronize()
+		copy[kernelConfig1D(LEN_ARRAY1)](A_device, arr_device)
+		cuda.synchronize()
+	
+	arr_host = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY1):
+		if (A_host[0, i] < EPS and arr_host[0, i] > EPS) or (A_host[0, i] > EPS and arr_host[0, i] < EPS):
+			return False
+		if abs(np.log(abs(A_host[0, i])) - np.log(abs(arr_host[0, i]))) > EPS:
+			return False
+	
+	return True
+
+def dotMatrix_test():
+	LEN_ARRAY1 = 200
+
+	A_host = np.ones([1, LEN_ARRAY1], dtype=np.float64)
+	B_host = np.random.randn(LEN_ARRAY1, LEN_ARRAY1)
+	C_host = np.random.randn(1, LEN_ARRAY1)
+
+	A_device = cuda.to_device(A_host)
+	B_device = cuda.to_device(B_host)
+	C_device = cuda.to_device(C_host)
+
+	arr_host = np.random.randn(1, LEN_ARRAY1)
+	arr_device = cuda.to_device(arr_host)
+
+	LOOP = 1
+
+	for i in range(LOOP):
+		A_host = dotMatrix_cpu(A_host, B_host, C_host)
+	
+	for i in range(LOOP):
+		memset2[kernelConfig2D(1, LEN_ARRAY1)](arr_device)
+		cuda.synchronize()
+		dotMatrix[kernelConfig3D(1, LEN_ARRAY1, LEN_ARRAY1)](arr_device, A_device, B_device)
+		cuda.synchronize()
+		sum[kernelConfig2D(1, LEN_ARRAY1)](arr_device, C_device)
+		cuda.synchronize()
+		copy[kernelConfig1D(LEN_ARRAY1)](A_device, arr_device)
+		cuda.synchronize()
+	
+	arr_host = arr_device.copy_to_host()
+
+	for i in range(LEN_ARRAY1):
+		if abs(abs(A_host[0, i]) - abs(arr_host[0, i])) > EPS:
+			return False
+	
+	return True
 
 def test():
 	init()
 	tests = [memset_test, memset2_test, mse_test, mse_derivate_test, softmax_test,
-	  		softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test]
+	  		softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, copy_test,
+			dotMatrix_loop_test, dotMatrix_test]
 
 	failed_tests = []
 
 	print(Fore.YELLOW + 'Tests started')
 	for currentTest in tests:
-		ok = True
-		try:
-			currentTest()
-		except:
-			ok = False
+		ok = currentTest()
+
 		status = "{}".format('.' if ok else 'F')
 		
 		if ok == False:
@@ -398,7 +553,5 @@ def test():
 		for t in failed_tests:
 			print(Fore.BLUE + "{}".format(t))
 
-
 if __name__ == "__main__":
-	#sigmoid2_derivate_test()
 	test()
