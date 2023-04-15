@@ -264,7 +264,7 @@ class Neural(object):
 
         kernel_name = 'dotMatrix'
         self.__isCached(kernel_name)
-        GF.dotMatrixV3[self.__kernelConfigGrid3(x.shape[0], x.shape[1], w.shape[1])](arr, x, w)
+        GF.dotMatrix[self.__kernelConfigGrid3(x.shape[0], x.shape[1], w.shape[1])](arr, x, w)
         self.__sync(kernel_name)
 
         kernel_name = 'sum'
