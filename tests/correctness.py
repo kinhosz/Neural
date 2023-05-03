@@ -1,81 +1,7 @@
 import numpy as np
 from numba import cuda
-from colorama import Fore, init
 from Deep.lib.GPU import *
-
-MINIMUMBLOCKSIZE = 28
-EPS = 1e-10
-THREADSPERBLOCK = 1024
-
-def ceil(A, B):
-	return (A + B - 1) // B
-
-def kernelConfig1D(size_x):
-	threads_x = THREADSPERBLOCK
-	blockspergrid_x = max(ceil(size_x, threads_x), MINIMUMBLOCKSIZE)
-
-	return (blockspergrid_x, threads_x)
-
-def kernelConfig2D(size_x, size_y):
-	threads = THREADSPERBLOCK
-
-	sz = [size_x, size_y]
-	t = [1, 1]
-
-	upd = True
-	while threads > 1 and upd:
-		upd = False
-		for i in range(2):
-			if t[i] >= sz[i] or threads == 1:
-				continue
-			threads //= 2
-			t[i] *= 2
-			upd = True
-	
-	blockspergrid_x = ceil(size_x, t[0])
-	blockspergrid_y = ceil(size_y, t[1])
-
-	blocks = blockspergrid_x * blockspergrid_y
-	if blocks < MINIMUMBLOCKSIZE:
-		add = MINIMUMBLOCKSIZE - blocks
-		blocks //= blockspergrid_y
-		blockspergrid_y += ceil(add, blocks)
-	
-	blockspergrid = (blockspergrid_x, blockspergrid_y)
-	threadsperblock = (t[0], t[1])
-
-	return (blockspergrid, threadsperblock)
-
-def kernelConfig3D(size_x, size_y, size_z):
-	threads = THREADSPERBLOCK
-
-	sz = [size_x, size_y, size_z]
-	t = [1, 1, 1]
-
-	upd = True
-	while threads > 1 and upd:
-		upd = False
-		for i in range(3):
-			if t[i] >= sz[i] or threads == 1:
-				continue
-			threads //= 2
-			t[i] *= 2
-			upd = True
-	
-	blockspergrid_x = ceil(size_x, t[0])
-	blockspergrid_y = ceil(size_y, t[1])
-	blockspergrid_z = ceil(size_z, t[2])
-
-	blocks = blockspergrid_x * blockspergrid_y * blockspergrid_z
-	if blocks < MINIMUMBLOCKSIZE:
-		add = MINIMUMBLOCKSIZE - blocks
-		blocks //= blockspergrid_z
-		blockspergrid_z += ceil(add, blocks)
-	
-	blockspergrid = (blockspergrid_x, blockspergrid_y, blockspergrid_z)
-	threadsperblock = (t[0], t[1], t[2])
-
-	return (blockspergrid, threadsperblock)
+from .utils import *
 
 def memset_test():
 	LEN_ARRAY = 2000
@@ -416,36 +342,14 @@ def updateWeights_test():
 	return True
 
 def test():
-	init()
 	tests = [memset_test, memset2_test, mse_test, mse_derivate_test, softmax_test,
 	  		softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, copy_test,
 			dotMatrix_loop_test, dotMatrix_test, dotMatrix_derivate_test,
 			transposeDot_test, updateWeights_test]
 
-	failed_tests = []
-
-	print(Fore.YELLOW + 'Tests started')
-	for currentTest in tests:
-		ok = currentTest()
-
-		status = "{}".format('.' if ok else 'F')
-		
-		if ok == False:
-			failed_tests.append(currentTest.__name__)
-
-		if ok:
-			print(Fore.GREEN + "{}".format(status), end='')
-		else:
-			print(Fore.RED + "{}".format(status), end='')
-
-	print("\n")
-
-	if len(failed_tests) == 0:
-		print(Fore.GREEN + "All tests have passed")
-	else:
-		print(Fore.RED + "Failed tests:")
-		for t in failed_tests:
-			print(Fore.BLUE + "{}".format(t))
+	gerador = logger("correctness", tests)
+	while gerador != None:
+		gerador = next(gerador)
 
 if __name__ == "__main__":
 	test()
