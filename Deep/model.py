@@ -1,7 +1,6 @@
 import numpy as np
-import random
-from Deep.lib import CPU_Function as CF
-from Deep.lib import GPU_Function as GF
+from Deep.lib.CPU import Function as CF
+from Deep.lib.GPU import Function as GF
 from timeit import default_timer as timer
 
 class Network(object):

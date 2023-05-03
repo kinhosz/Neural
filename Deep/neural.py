@@ -1,5 +1,5 @@
 import numpy as np
-from Deep.lib import GPU_Function as GF
+from Deep.lib.GPU import Function as GF
 from numba import cuda, float64
 from timeit import default_timer as timer
 import math

@@ -1,2 +1,3 @@
-from Deep.model import Network
-from Deep.neural import Neural
+from .model import Network as C_Neural
+from .neural import Neural as G_Neural
+import lib
