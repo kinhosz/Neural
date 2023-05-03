@@ -299,9 +299,10 @@ def test():
 	  		softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, copy_test,
 			dotMatrix_test, dotMatrix_derivate_test, transposeDot_test, updateWeights_test]
 
-	gerador = logger("correctness", tests)
-	while gerador != None:
-		gerador = next(gerador)
+	#gerador = logger("correctness", tests)
+	#while gerador != None:
+		#gerador = next(gerador)
+	logger("correctness", tests)
 
 if __name__ == "__main__":
 	test()

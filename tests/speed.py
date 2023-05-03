@@ -75,9 +75,7 @@ def test():
     
     compiler(tests)
     
-    gerador = logger("speed", tests)
-    while gerador != None:
-        gerador = next(gerador)
+    logger("speed", tests)
 
 if __name__ == "__main__":
     test()
