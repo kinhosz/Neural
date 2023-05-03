@@ -200,82 +200,6 @@ def copy_test():
 	
 	return True
 
-def dotMatrix_loop_test():
-	LEN_ARRAY1 = 200
-
-	A_host = np.ones([1, LEN_ARRAY1], dtype=np.float64)
-	B_host = np.random.randn(LEN_ARRAY1, LEN_ARRAY1)
-	C_host = np.random.randn(1, LEN_ARRAY1)
-
-	A_device = cuda.to_device(A_host)
-	B_device = cuda.to_device(B_host)
-	C_device = cuda.to_device(C_host)
-
-	arr_host = np.random.randn(1, LEN_ARRAY1)
-	arr_device = cuda.to_device(arr_host)
-
-	LOOP = 200
-
-	for i in range(LOOP):
-		A_host = dotMatrix_cpu(A_host, B_host, C_host)
-	
-	for i in range(LOOP):
-		memset2[kernelConfig2D(1, LEN_ARRAY1)](arr_device)
-		cuda.synchronize()
-		dotMatrix[kernelConfig3D(1, LEN_ARRAY1, LEN_ARRAY1)](arr_device, A_device, B_device)
-		cuda.synchronize()
-		sum[kernelConfig2D(1, LEN_ARRAY1)](arr_device, C_device)
-		cuda.synchronize()
-		copy[kernelConfig1D(LEN_ARRAY1)](A_device, arr_device)
-		cuda.synchronize()
-	
-	arr_host = arr_device.copy_to_host()
-
-	for i in range(LEN_ARRAY1):
-		if (A_host[0, i] < EPS and arr_host[0, i] > EPS) or (A_host[0, i] > EPS and arr_host[0, i] < EPS):
-			return False
-		if abs(np.log(abs(A_host[0, i])) - np.log(abs(arr_host[0, i]))) > EPS:
-			return False
-	
-	return True
-
-def dotMatrix_test():
-	LEN_ARRAY1 = 200
-
-	A_host = np.ones([1, LEN_ARRAY1], dtype=np.float64)
-	B_host = np.random.randn(LEN_ARRAY1, LEN_ARRAY1)
-	C_host = np.random.randn(1, LEN_ARRAY1)
-
-	A_device = cuda.to_device(A_host)
-	B_device = cuda.to_device(B_host)
-	C_device = cuda.to_device(C_host)
-
-	arr_host = np.random.randn(1, LEN_ARRAY1)
-	arr_device = cuda.to_device(arr_host)
-
-	LOOP = 1
-
-	for i in range(LOOP):
-		A_host = dotMatrix_cpu(A_host, B_host, C_host)
-	
-	for i in range(LOOP):
-		memset2[kernelConfig2D(1, LEN_ARRAY1)](arr_device)
-		cuda.synchronize()
-		dotMatrix[kernelConfig3D(1, LEN_ARRAY1, LEN_ARRAY1)](arr_device, A_device, B_device)
-		cuda.synchronize()
-		sum[kernelConfig2D(1, LEN_ARRAY1)](arr_device, C_device)
-		cuda.synchronize()
-		copy[kernelConfig1D(LEN_ARRAY1)](A_device, arr_device)
-		cuda.synchronize()
-	
-	arr_host = arr_device.copy_to_host()
-
-	for i in range(LEN_ARRAY1):
-		if abs(abs(A_host[0, i]) - abs(arr_host[0, i])) > EPS:
-			return False
-	
-	return True
-
 def dotMatrix_derivate_test():
 	LEN_ARRAY1 = 200
 	LEN_ARRAY2 = 100
@@ -341,11 +265,39 @@ def updateWeights_test():
 	
 	return True
 
+def dotMatrix_test():
+	LEN_ARRAY = 100000
+	LEN_ARRAY1 = int(math.sqrt(LEN_ARRAY))
+	LEN_ARRAY2 = LEN_ARRAY1
+	
+	A_host = np.random.randn(1, LEN_ARRAY1)
+	B_host = np.random.randn(LEN_ARRAY1, LEN_ARRAY2)
+	C_host = np.random.randn(1, LEN_ARRAY2)
+	
+	A_device = cuda.to_device(A_host)
+	B_device = cuda.to_device(B_host)
+	C_device = cuda.to_device(C_host)
+	
+	arr_host = np.random.randn(1, LEN_ARRAY2)
+	arr_device = cuda.to_device(arr_host)
+	
+	ans = dotMatrix_cpu(A_host, B_host, C_host)
+	
+	dotMatrix[kernelConfig2D(1, LEN_ARRAY2)](arr_device, A_device, B_device, C_device)
+	cuda.synchronize()
+	
+	arr_host = arr_device.copy_to_host()
+	
+	for i in range(LEN_ARRAY2):
+		if abs(ans[0, i] - arr_host[0, i]) > EPS:
+			return False
+	
+	return True
+
 def test():
 	tests = [memset_test, memset2_test, mse_test, mse_derivate_test, softmax_test,
 	  		softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, copy_test,
-			dotMatrix_loop_test, dotMatrix_test, dotMatrix_derivate_test,
-			transposeDot_test, updateWeights_test]
+			dotMatrix_test, dotMatrix_derivate_test, transposeDot_test, updateWeights_test]
 
 	gerador = logger("correctness", tests)
 	while gerador != None:

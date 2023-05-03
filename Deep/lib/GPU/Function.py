@@ -97,13 +97,16 @@ def sum(arr, C):
 	arr[x, y] += C[x, y]
 
 @cuda.jit
-def dotMatrix(arr, A, B):
-	x, y, z = cuda.grid(3)
+def dotMatrix(arr, A, B, C):
+	x, y = cuda.grid(2)
 
-	if x >= A.shape[0] or y >= A.shape[1] or z >= B.shape[1]:
+	if x >= arr.shape[0] or y >= arr.shape[1]:
 		return
 	
-	cuda.atomic.add(arr, (x, z), A[x, y] * B[y, z])
+	arr[x, y] = float64(.0)
+	for k in range(A.shape[1]):
+		arr[x, y] += A[x, k] * B[k, y]
+	arr[x, y] += C[x, y]
 
 @cuda.jit
 def dotMatrix_derivate(arr, w, alpha):
