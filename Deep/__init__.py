@@ -1,3 +1,3 @@
-from .model import Network as C_Neural
-from .neural import Neural as G_Neural
+from .model import Network as CNeural
+from .neural import Neural
 from . import lib

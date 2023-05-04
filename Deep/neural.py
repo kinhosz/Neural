@@ -1,6 +1,6 @@
 import numpy as np
-from Deep.lib.GPU import Function as GF
-from numba import cuda, float64
+from .lib.GPU import *
+from numba import cuda
 from timeit import default_timer as timer
 import math
 from colorama import Fore, init
@@ -158,21 +158,6 @@ class Neural(object):
         if log:
             print(color + "synchronize ({}): {}ms".format(kernel_name, ms))
     
-    def __log(self, msg, temp):
-        temp = round(1000 * temp, 3)
-
-        color = Fore.WHITE
-        if temp > 1000:
-            color = Fore.RED
-        elif temp > 100:
-            color = Fore.YELLOW
-        elif temp > 5:
-            color = Fore.LIGHTYELLOW_EX
-        else:
-            color = Fore.GREEN
-        
-        print(color + "{}: {}ms".format(msg, temp))
-    
     def __isCached(self, kernel_name, log=True):
         if kernel_name not in self.__compiled.keys():
             if log:
@@ -184,10 +169,10 @@ class Neural(object):
         kernel_name = 'memset'
         if len(arr) == 1:
             self.__isCached(kernel_name)
-            GF.memset[self.__kernelConfig(len(arr))](arr)
+            memset[self.__kernelConfig(len(arr))](arr)
         else:
             self.__isCached(kernel_name)
-            GF.memset2[self.__kernelConfigGrid(arr.shape[0], arr.shape[1])](arr)
+            memset2[self.__kernelConfigGrid(arr.shape[0], arr.shape[1])](arr)
         self.__sync(kernel_name)
 
     # read-only
@@ -197,7 +182,7 @@ class Neural(object):
 
         kernel_name = 'mse'
         self.__isCached(kernel_name)
-        GF.mse[self.__kernelConfig(predicted.shape[1])](result_device, predicted, target)
+        mse[self.__kernelConfig(predicted.shape[1])](result_device, predicted, target)
         self.__sync(kernel_name)
 
         result_host = result_device.copy_to_host(stream=self.__stream)
@@ -210,7 +195,7 @@ class Neural(object):
 
         kernel_name = 'mse_derivate'
         self.__isCached(kernel_name)
-        GF.mse_derivate[self.__kernelConfig(loss_device.shape[1])](loss_device, y, o)
+        mse_derivate[self.__kernelConfig(loss_device.shape[1])](loss_device, y, o)
         self.__sync(kernel_name)
 
         return loss_device
@@ -221,12 +206,12 @@ class Neural(object):
 
         kernel_name = 'softmax_p1'
         self.__isCached(kernel_name)
-        GF.softmax_p1[self.__kernelConfig(arr.shape[1])](arr, x, var)
+        softmax_p1[self.__kernelConfig(arr.shape[1])](arr, x, var)
         self.__sync(kernel_name)
 
         kernel_name = 'softmax_p2'
         self.__isCached(kernel_name)
-        GF.softmax_p2[self.__kernelConfig(arr.shape[1])](arr, var)
+        softmax_p2[self.__kernelConfig(arr.shape[1])](arr, var)
         self.__sync(kernel_name)
 
     # write: [arr]
@@ -236,26 +221,26 @@ class Neural(object):
 
         kernel_name = 'softmax_sum_derivate'
         self.__isCached(kernel_name)
-        GF.softmax_sum_derivate[self.__kernelConfig(z.shape[1])](arr, z, alpha, simple_sum, sum_times_alpha)
+        softmax_sum_derivate[self.__kernelConfig(z.shape[1])](arr, z, alpha, simple_sum, sum_times_alpha)
         self.__sync(kernel_name)
 
         kernel_name = 'softmax_derivate'
         self.__isCached(kernel_name)
-        GF.softmax_derivate[self.__kernelConfig(z.shape[1])](arr, alpha, simple_sum, sum_times_alpha)
+        softmax_derivate[self.__kernelConfig(z.shape[1])](arr, alpha, simple_sum, sum_times_alpha)
         self.__sync(kernel_name)
 
     # write: [arr]
     def __activation(self, arr, x):
         kernel_name = 'sigmoid2'
         self.__isCached(kernel_name)
-        GF.sigmoid2[self.__kernelConfig(arr.shape[1])](arr, x)
+        sigmoid2[self.__kernelConfig(arr.shape[1])](arr, x)
         self.__sync(kernel_name)
 
     # write: [arr]
     def __d_activation(self, arr, alpha):
         kernel_name = 'sigmoid2_derivate'
         self.__isCached(kernel_name)
-        GF.sigmoid2_derivate[self.__kernelConfig(arr.shape[1])](arr, alpha)
+        sigmoid2_derivate[self.__kernelConfig(arr.shape[1])](arr, arr, alpha)
         self.__sync(kernel_name)
 
     # write: [arr]
@@ -264,12 +249,7 @@ class Neural(object):
 
         kernel_name = 'dotMatrix'
         self.__isCached(kernel_name)
-        GF.dotMatrix[self.__kernelConfigGrid3(x.shape[0], x.shape[1], w.shape[1])](arr, x, w)
-        self.__sync(kernel_name)
-
-        kernel_name = 'sum'
-        self.__isCached(kernel_name)
-        GF.sum[self.__kernelConfigGrid(arr.shape[0], arr.shape[1])](arr, b)
+        dotMatrix[self.__kernelConfigGrid(arr.shape[0], arr.shape[1])](arr, x, w, b)
         self.__sync(kernel_name)
 
     # write: [arr]
@@ -278,7 +258,7 @@ class Neural(object):
 
         kernel_name = 'dotMatrix_derivate'
         self.__isCached(kernel_name)
-        GF.dotMatrix_derivate[self.__kernelConfigGrid3(arr.shape[0], arr.shape[1], alpha.shape[1])](arr, w, alpha)
+        dotMatrix_derivate[self.__kernelConfigGrid3(arr.shape[0], arr.shape[1], alpha.shape[1])](arr, w, alpha)
         self.__sync(kernel_name)
         
     def __feedForward(self, x):
@@ -328,7 +308,7 @@ class Neural(object):
 
             kernel_name = 'transposeDot'
             self.__isCached(kernel_name)
-            GF.transposeDot[self.__kernelConfigGrid(coord_x, coord_y)](self.__nablas_w_device[-l], z[-l-1], error)
+            transposeDot[self.__kernelConfigGrid(coord_x, coord_y)](self.__nablas_w_device[-l], z[-l-1], error)
             self.__sync(kernel_name)
 
             nabla_b = error # error for each bias
@@ -340,10 +320,10 @@ class Neural(object):
             kernel_name = 'updateWeights'
             self.__isCached(kernel_name)
             coord_x, coord_y = self.__weights_device[-l].shape
-            GF.updateWeights[self.__kernelConfigGrid(coord_x, coord_y)](self.__weights_device[-l], self.__eta_device, nabla_w)
+            updateWeights[self.__kernelConfigGrid(coord_x, coord_y)](self.__weights_device[-l], self.__eta_device, nabla_w)
             self.__sync(kernel_name)
             coord_x, coord_y = self.__biases_device[-l].shape
-            GF.updateWeights[self.__kernelConfigGrid(coord_x, coord_y)](self.__biases_device[-l], self.__eta_device, nabla_b)
+            updateWeights[self.__kernelConfigGrid(coord_x, coord_y)](self.__biases_device[-l], self.__eta_device, nabla_b)
             self.__sync(kernel_name)
 
     def send(self, input):
@@ -375,9 +355,3 @@ class Neural(object):
         predict_device = self.__feedForward(x_device)
 
         return self.__loss(predict_device, target_device)    
-
-def main():
-    print(Fore.WHITE+"ola mundo")
-
-if __name__ == "__main__":
-    main()
