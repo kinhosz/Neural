@@ -14,8 +14,8 @@ def ceil(A, B):
 
 class Neural(object):
 
-    def __init__(self,sizes,eta=0.01, random_weights=True):
-        self.eta = eta
+    def __init__(self, sizes, eta=0.01, random_weights=True):
+        self.eta = np.array([eta])
         self.num_layers = len(sizes)
         self.sizes = sizes
         self.weights = None
@@ -165,12 +165,44 @@ class Neural(object):
             b = self.biases[-l]
 
             derror = self.__d_activation(activations[-l],derror)
+            
             nabla_w = z[-l-1].transpose().dot(derror) # error for each wij
-            nabla_b = derror # error for each bias
-            derror =  self.__d_layer(z[-l-1],w,derror)
+            LEN1 = z[-l-1].shape[1]
+            LEN2 = derror.shape[1]
 
-            self.weights[-l] = self.weights[-l] - (self.eta * nabla_w)
-            self.biases[-l] = self.biases[-l] - (self.eta * nabla_b)
+            arr_dvc = cuda.to_device(np.zeros([LEN1, LEN2]))
+            x_dvc = cuda.to_device(z[-l-1])
+            derror_dvc = cuda.to_device(derror)
+
+            transposeDot[kernelConfig2D(LEN1, LEN2)](arr_dvc, x_dvc, derror_dvc)
+            cuda.synchronize()
+
+            nabla_w = arr_dvc.copy_to_host()
+
+            nabla_b = derror # error for each bias
+            derror =  self.__d_layer(z[-l-1], w, derror)
+
+            LEN1, LEN2 = self.weights[-l].shape
+
+            eta_dvc = cuda.to_device(self.eta)
+            nabla_w_dvc = cuda.to_device(nabla_w)
+            w_dvc = cuda.to_device(self.weights[-l])
+
+            updateWeights[kernelConfig2D(LEN1, LEN2)](w_dvc, eta_dvc, nabla_w_dvc)
+            cuda.synchronize()
+
+            self.weights[-l] = w_dvc.copy_to_host()
+
+            LEN1, LEN2 = self.biases[-l].shape
+
+            eta_dvc = cuda.to_device(self.eta)
+            nabla_b_dvc = cuda.to_device(nabla_b)
+            b_dvc = cuda.to_device(self.biases[-l])
+
+            updateWeights[kernelConfig2D(LEN1, LEN2)](b_dvc, eta_dvc, nabla_b_dvc)
+            cuda.synchronize()
+
+            self.biases[-l] = b_dvc.copy_to_host()
         
         t = timer() - t
 
