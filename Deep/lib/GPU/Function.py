@@ -76,7 +76,7 @@ def softmax_derivate(arr, alpha, simple_sum, sum_times_alpha):
 def sigmoid2(arr, A):
 	x = cuda.grid(1)
 
-	if x < arr.shape[1] and 0 < arr.shape[0]:
+	if x < arr.shape[1]:
 		arr[0, x] = 2.0 * (1.0 / (1.0 + math.exp(-A[0, x]))) - 1.0
 
 @cuda.jit
@@ -98,15 +98,15 @@ def sum(arr, C):
 
 @cuda.jit
 def dotMatrix(arr, A, B, C):
-	x, y = cuda.grid(2)
+	x = cuda.grid(1)
 
-	if x >= arr.shape[0] or y >= arr.shape[1]:
+	if x >= arr.shape[1]:
 		return
 	
-	arr[x, y] = float64(.0)
+	arr[0, x] = float64(.0)
 	for k in range(A.shape[1]):
-		arr[x, y] += A[x, k] * B[k, y]
-	arr[x, y] += C[x, y]
+		arr[0, x] += A[0, k] * B[k, x]
+	arr[0, x] += C[0, x]
 
 @cuda.jit
 def dotMatrix_derivate(arr, w, alpha):

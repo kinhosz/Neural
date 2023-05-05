@@ -283,7 +283,7 @@ def dotMatrix_test():
 	
 	ans = dotMatrix_cpu(A_host, B_host, C_host)
 	
-	dotMatrix[kernelConfig2D(1, LEN_ARRAY2)](arr_device, A_device, B_device, C_device)
+	dotMatrix[kernelConfig1D(LEN_ARRAY2)](arr_device, A_device, B_device, C_device)
 	cuda.synchronize()
 	
 	arr_host = arr_device.copy_to_host()
@@ -299,9 +299,6 @@ def test():
 	  		softmax_derivate_test, sigmoid2_test, sigmoid2_derivate_test, copy_test,
 			dotMatrix_test, dotMatrix_derivate_test, transposeDot_test, updateWeights_test]
 
-	#gerador = logger("correctness", tests)
-	#while gerador != None:
-		#gerador = next(gerador)
 	logger("correctness", tests)
 
 if __name__ == "__main__":

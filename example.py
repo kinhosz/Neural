@@ -1,5 +1,5 @@
 import random
-from Deep import Network, Neural
+from Deep import CNeural, Neural
 import matplotlib.pyplot as plt
 from PIL import Image
 from timeit import default_timer as timer
@@ -74,8 +74,9 @@ def organize(l):
 def main():
 	compile_timer = timer()
 
+	#bia = CNeural([28*28,15,10],eta = 0.1)
 	bia = Neural([28*28,15,10],eta = 0.1)
-	#bia = Network([28*28, 10000, 5000, 100, 15,10], eta=0.1)
+	#bia = CNeural([28*28, 10000, 5000, 100, 15,10], eta=0.1)
 	#bia = Neural([28*28, 10000, 5000, 100, 15,10], eta=0.1)
 
 	print(Fore.WHITE + 'compiler time =', timer() - compile_timer)

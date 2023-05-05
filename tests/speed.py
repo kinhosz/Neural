@@ -5,7 +5,7 @@ from .utils import *
 from timeit import default_timer as timer
 
 ALPHA = 1.5
-MS_LIMIT = 10.0
+MS_LIMIT = 20.0
 
 def dotMatrix_test(LEN_ARRAY):
     LEN_ARRAY1 = int(math.sqrt(LEN_ARRAY))

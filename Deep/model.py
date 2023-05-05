@@ -5,13 +5,12 @@ from timeit import default_timer as timer
 
 class Network(object):
 
-    def __init__(self,sizes,eta=0.01, random_weights=True, gpu_mode=False):
+    def __init__(self,sizes,eta=0.01, random_weights=True):
         self.eta = eta
         self.num_layers = len(sizes)
         self.sizes = sizes
         self.weights = None
         self.biases = [np.random.randn(1,x) for x in sizes[1:]]
-        self.gpu_mode = gpu_mode
 
         if random_weights:
             self.weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
@@ -109,10 +108,4 @@ class Network(object):
         np_x = np.array([x])
         np_y = np.array([y])
         np_x = self.__activation(np_x)
-        return self.__loss(self.__feedForward(np_x),np_y)    
-
-def main():
-    print("ola mundo")
-
-if __name__ == "__main__":
-    main()
+        return self.__loss(self.__feedForward(np_x),np_y)
