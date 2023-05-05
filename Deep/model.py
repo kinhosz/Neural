@@ -108,4 +108,4 @@ class Network(object):
         np_x = np.array([x])
         np_y = np.array([y])
         np_x = self.__activation(np_x)
-        return self.__loss(self.__feedForward(np_x),np_y)    
+        return self.__loss(self.__feedForward(np_x),np_y)
