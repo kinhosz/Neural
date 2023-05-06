@@ -1,15 +1,21 @@
 import numpy as np
-import random
-from lib import Function as F
+from Deep.lib.CPU import Function as CF
+from Deep.lib.GPU import Function as GF
+from timeit import default_timer as timer
 
 class Network(object):
 
-    def __init__(self,sizes,eta=0.01):
+    def __init__(self,sizes,eta=0.01, random_weights=True):
         self.eta = eta
         self.num_layers = len(sizes)
         self.sizes = sizes
-        self.weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
+        self.weights = None
         self.biases = [np.random.randn(1,x) for x in sizes[1:]]
+
+        if random_weights:
+            self.weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
+        else:
+            self.weights = [np.zeros(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
 
     ############################################################################
     ############# NETWORK ######################################################
@@ -18,31 +24,36 @@ class Network(object):
     # y = minha saida
     # o = output esperado
     def __loss(self,y,o):
-        return F.mse(y,o)
+        return CF.mse(y,o)
 
     def __d_loss(self,y,o):
-        return F.mse_derivate(y,o)
+        return CF.mse_derivate(y,o)
 
     # funcao para selecionar a saida do neuronio
     def __selector(self,z):
-        return F.softmax(z)
+        return CF.softmax(z)
 
     def __d_selector(self,z,alpha):
-        return F.softmax_derivate(z,alpha)
+        return CF.softmax_derivate(z,alpha)
 
     # funcao para ativar cada neuronio
     def __activation(self,z):
-        return F.sigmoid2(z)
+        return CF.sigmoid2(z)
 
     def __d_activation(self,z,alpha):
-        return F.sigmoid2_derivate(z,alpha)
+        return CF.sigmoid2_derivate(z,alpha)
     
     # funcao que realiza a entrada de toda camada anterior
     def __layer(self,x,w,b):
-        return F.dotMatrix(x,w,b)
+        #return CF.dotMatrix(x,w,b)
+        t = timer()
+        a = CF.dotMatrix(x,w,b)
+        t = timer() - t
+        #print("DotMatrix ms = ", round(t * 1000, 3))
+        return a
 
     def __d_layer(self,x,w,alpha):
-        return F.dotMatrix_derivate(x,w,alpha)
+        return CF.dotMatrix_derivate(x,w,alpha)
         
     def __feedForward(self,x):
 
@@ -53,6 +64,7 @@ class Network(object):
         return self.__selector(x)
 
     def __backPropagation(self,x,target):
+        t = timer()
 
         # feedForward
         z = [x] # save all Zs
@@ -80,6 +92,8 @@ class Network(object):
 
             self.weights[-l] = self.weights[-l] - (self.eta * nabla_w)
             self.biases[-l] = self.biases[-l] - (self.eta * nabla_b)
+        
+        t = timer() - t
 
     def send(self, l):
         x =  self.__activation(np.array([l]))
@@ -95,11 +109,3 @@ class Network(object):
         np_y = np.array([y])
         np_x = self.__activation(np_x)
         return self.__loss(self.__feedForward(np_x),np_y)
-
-        
-
-def main():
-    print("ola mundo")
-
-if __name__ == "__main__":
-    main()

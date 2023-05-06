@@ -1,7 +1,9 @@
 import random
-from model import Network
+from Deep import CNeural, Neural
 import matplotlib.pyplot as plt
 from PIL import Image
+from timeit import default_timer as timer
+from colorama import Fore, init
 
 def read_image_files(url):
 	f = open(url,"rb")
@@ -70,14 +72,23 @@ def organize(l):
 	return ret
 
 def main():
+	compile_timer = timer()
 
-	bia = Network([28*28,15,10],eta = 0.1)
+	bia = Neural([28*28, 15, 10], eta=0.1)
+	bia2 = CNeural([28*28, 15, 10], eta=0.1)
+
+	print(Fore.WHITE + 'compiler time =', timer() - compile_timer)
+	processing_input = timer()
 
 	images = read_image_files("data/train-images.idx3-ubyte")
 	labels = read_label_files("data/train-labels.idx1-ubyte")
 
+	print(Fore.WHITE + 'input processed: ', timer() - processing_input)
+	total_time = timer()
+
 	hit = 0
-	epoch_size = 1000
+	hit2 = 0
+	epoch_size = 100
 	test = 0
 	epoch = 0
 
@@ -87,6 +98,8 @@ def main():
 	out = []
 	for i in range(10):
 		out.append(0.0)
+	
+	start = timer()
 
 	for lazy in range(30):
 		train_test = [(x,y) for x, y in zip(images,labels)]
@@ -96,22 +109,43 @@ def main():
 		for i in range(60000):
 
 			ans = bia.send(images[i])
-			if isOk(labels[i],ans):
+			if isOk(labels[i], ans):
 				hit = hit + 1
+			
+			ans = bia2.send(images[i])
+			if isOk(labels[i], ans):
+				hit2 = hit2 + 1
 
 			test = test + 1
 			out[labels[i]] = 1.0
-			bia.learn(images[i],out)
-			##eixo_x.append(i)
-			##eixo_y.append(bia.cost(images[i],out))
+
+			bia1_timer = timer()
+			bia.learn(images[i], out)
+			bia1_timer = timer() - bia1_timer
+			
+			bia2_timer = timer()
+			bia2.learn(images[i], out)
+			bia2_timer = timer() - bia2_timer
+
+			bia1_timer *= 1000
+			bia2_timer *= 1000
+
+			bia1_timer = round(bia1_timer, 3)
+			bia2_timer = round(bia2_timer, 3)
+
 			out[labels[i]] = 0.0
 
 			if test == epoch_size:
 				rate = hit/epoch_size
-				print("epoch {}: rate = {}".format(epoch,rate))
+				print(Fore.WHITE + "(bia1) epoch {}: rate = {}, learn = {}ms".format(epoch, rate, bia1_timer))
+				rate = hit2/epoch_size
+				print(Fore.WHITE + "(bia2) epoch {}: rate = {}, learn = {}ms".format(epoch, rate, bia2_timer))
+				print(Fore.GREEN + "-------")
+				start = timer()
 				epoch = epoch + 1
 				test = 0
 				hit = 0
+				hit2 = 0
 				eixo_x.append(epoch)
 				eixo_y.append(rate)
 
@@ -142,19 +176,15 @@ def main():
 
 		org = organize(ans)
 
-		'''if acerto:
-			print("[OK] => {}".format(org))
-		else:
-			print("[ERROR - {}] => {}".format(labels[i],org))'''
-
-	print("Total score: {}/{} => {}".format(hit,10000,hit/10000))
+	print(Fore.WHITE + "Total score: {}/{} => {}".format(hit,10000,hit/10000))
 
 	pick = random.randint(0,9999)
 	print_image = images[pick]
 	ans = bia.send(print_image)
 	ans = organize(ans)
-	print("Esperado: {}".format(labels[pick]))
-	print("Chute: {} com {}%% de precisao\n {} com {}%% de precisao.\n {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
+	print(Fore.WHITE + "Esperado: {}".format(labels[pick]))
+	print(Fore.WHITE + "Chute: {} com {}%% de precisao\n {} com {}%% de precisao.\n {} com {}%% de precisao".format(ans[0][0],(ans[0][1]*100)//1,ans[1][0],(ans[1][1]*100.0)//1,ans[2][0],(ans[2][1]*100.0)//1))
+	print(Fore.WHITE + "total time: ",  timer() - total_time)
 	teste(print_image)
 	graph(eixo_x,eixo_y)
 
@@ -174,4 +204,5 @@ def graph(eixo_x,eixo_y):
 	plt.show()
 
 if __name__ == "__main__":
+	init()
 	main()
