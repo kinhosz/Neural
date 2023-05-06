@@ -15,21 +15,32 @@ def ceil(A, B):
 class Neural(object):
 
     def __init__(self, sizes, eta=0.01, random_weights=True):
-        self.eta = np.array([eta])
-        self.num_layers = len(sizes)
-        self.sizes = sizes
-        self.weights = None
-        self.biases = [np.random.randn(1,x) for x in sizes[1:]]
+        self.__eta = np.array([eta])
+        self.__num_layers = len(sizes)
+        self.__sizes = sizes
+        self.__weights = None
+        self.__biases = [np.random.randn(1,x) for x in sizes[1:]]
 
         if random_weights:
-            self.weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
+            self.__weights = [np.random.randn(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
         else:
-            self.weights = [np.zeros(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
+            self.__weights = [np.zeros(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
+    
+    def __logger(self, method, delta, dbg=False):
+        delta = round(delta * 1000, 3)
 
-    ############################################################################
-    ############# NETWORK ######################################################
+        color = Fore.GREEN
+        if delta >= 1.0:
+            color = Fore.YELLOW
+        if delta >= 5.0:
+            color = Fore.RED
+        
+        if dbg:
+            print(color + "{}: {}ms".format(method, delta))
 
     def __loss(self, predicted, target):
+        t = timer()
+
         predicted_dvc = cuda.to_device(predicted)
         target_dvc = cuda.to_device(target)
         arr_dvc = cuda.to_device(np.zeros(1))
@@ -37,9 +48,14 @@ class Neural(object):
         mse[kernelConfig1D(predicted_dvc.shape[0])](arr_dvc, predicted_dvc, target_dvc)
         cuda.synchronize()
         arr = arr_dvc.copy_to_host()
+
+        t = timer() - t
+        self.__logger("loss", t)
         return arr
 
     def __d_loss(self, predicted, target):
+        t = timer()
+
         LEN = predicted.shape[1]
         predicted_dvc = cuda.to_device(predicted)
         target_dvc = cuda.to_device(target)
@@ -48,9 +64,14 @@ class Neural(object):
         mse_derivate[kernelConfig1D(LEN)](arr_dvc, predicted_dvc, target_dvc)
         cuda.synchronize()
         arr = arr_dvc.copy_to_host()
+
+        t = timer() - t
+        self.__logger("dloss", t)
         return arr
 
     def __selector(self, z):
+        t = timer()
+
         LEN = z.shape[1]
         z_dvc = cuda.to_device(z)
         arr_dvc = cuda.to_device(np.random.randn(1, LEN))
@@ -62,9 +83,14 @@ class Neural(object):
         cuda.synchronize()
 
         arr = arr_dvc.copy_to_host()
+
+        t = timer() - t
+        self.__logger("selector", t)
         return arr
 
     def __d_selector(self, z, alpha):
+        t = timer()
+
         LEN = z.shape[1]
 
         z_dvc = cuda.to_device(z)
@@ -80,9 +106,14 @@ class Neural(object):
         cuda.synchronize()
 
         arr = arr_dvc.copy_to_host()
+
+        t = timer() - t
+        self.__logger("dselector", t)
         return arr
 
     def __activation(self, z):
+        t = timer()
+
         LEN = z.shape[1]
 
         z_dvc = cuda.to_device(z)
@@ -92,9 +123,14 @@ class Neural(object):
         cuda.synchronize()
 
         arr = arr_dvc.copy_to_host()
+
+        t = timer() - t
+        self.__logger("activation", t)
         return arr
 
     def __d_activation(self, z, alpha):
+        t = timer()
+
         LEN = z.shape[1]
 
         z_dvc = cuda.to_device(z)
@@ -105,23 +141,40 @@ class Neural(object):
         cuda.synchronize()
 
         arr = arr_dvc.copy_to_host()
+
+        t = timer() - t
+        self.__logger("dactivation", t)
         return arr
     
     def __layer(self, x, w, b):
+        t = timer()
+
         LEN = w.shape[1]
 
+        delta = 0.0
+        t2 = timer()
         arr_dvc = cuda.to_device(np.zeros([1, LEN]))
         x_dvc = cuda.to_device(x)
         w_dvc = cuda.to_device(w)
         b_dvc = cuda.to_device(b)
+        delta += timer() - t2
 
         dotMatrix[kernelConfig1D(LEN)](arr_dvc, x_dvc, w_dvc, b_dvc)
         cuda.synchronize()
 
+        t2 = timer()
         arr = arr_dvc.copy_to_host()
+        delta += timer() - t2
+
+        self.__logger("memo management", delta)
+
+        t = timer() - t
+        self.__logger("layer", t)
         return arr
 
     def __d_layer(self, _x, w, alpha):
+        t = timer()
+
         LEN = w.shape[0]
         LEN2 = w.shape[1]
 
@@ -133,14 +186,22 @@ class Neural(object):
         cuda.synchronize()
 
         arr = arr_dvc.copy_to_host()
+
+        t = timer() - t
+        self.__logger("dlayer", t)
         return arr
         
     def __feedForward(self,x):
+        t = timer()
 
-        for w, b in zip(self.weights,self.biases):
+        for w, b in zip(self.__weights,self.__biases):
             x = self.__layer(self.__activation(x),w,b)
 
-        return self.__selector(x)
+        y = self.__selector(x)
+
+        t = timer() - t
+        self.__logger("feedForward", t)
+        return y
 
     def __backPropagation(self,x,target):
         t = timer()
@@ -149,7 +210,7 @@ class Neural(object):
         z = [x] # save all Zs
         activations = [] # save all activations
 
-        for w, b in zip(self.weights,self.biases):
+        for w, b in zip(self.__weights,self.__biases):
             x = self.__layer(x,w,b)
             activations.append(x)
             x = self.__activation(x)
@@ -158,11 +219,11 @@ class Neural(object):
         y = self.__selector(x)
 
         derror = self.__d_loss(y,target)
-        derror = self.__d_selector(z[self.num_layers - 1],derror)
+        derror = self.__d_selector(z[self.__num_layers - 1],derror)
 
-        for l in range(1, self.num_layers):
-            w = self.weights[-l]
-            b = self.biases[-l]
+        for l in range(1, self.__num_layers):
+            w = self.__weights[-l]
+            b = self.__biases[-l]
 
             derror = self.__d_activation(activations[-l],derror)
             
@@ -182,41 +243,60 @@ class Neural(object):
             nabla_b = derror # error for each bias
             derror =  self.__d_layer(z[-l-1], w, derror)
 
-            LEN1, LEN2 = self.weights[-l].shape
+            LEN1, LEN2 = self.__weights[-l].shape
 
-            eta_dvc = cuda.to_device(self.eta)
+            eta_dvc = cuda.to_device(self.__eta)
             nabla_w_dvc = cuda.to_device(nabla_w)
-            w_dvc = cuda.to_device(self.weights[-l])
+            w_dvc = cuda.to_device(self.__weights[-l])
 
             updateWeights[kernelConfig2D(LEN1, LEN2)](w_dvc, eta_dvc, nabla_w_dvc)
             cuda.synchronize()
 
-            self.weights[-l] = w_dvc.copy_to_host()
+            self.__weights[-l] = w_dvc.copy_to_host()
 
-            LEN1, LEN2 = self.biases[-l].shape
+            LEN1, LEN2 = self.__biases[-l].shape
 
-            eta_dvc = cuda.to_device(self.eta)
+            eta_dvc = cuda.to_device(self.__eta)
             nabla_b_dvc = cuda.to_device(nabla_b)
-            b_dvc = cuda.to_device(self.biases[-l])
+            b_dvc = cuda.to_device(self.__biases[-l])
 
             updateWeights[kernelConfig2D(LEN1, LEN2)](b_dvc, eta_dvc, nabla_b_dvc)
             cuda.synchronize()
 
-            self.biases[-l] = b_dvc.copy_to_host()
+            self.__biases[-l] = b_dvc.copy_to_host()
         
         t = timer() - t
+        self.__logger("backpropagation", t)
 
     def send(self, l):
-        x =  self.__activation(np.array([l]))
-        return self.__feedForward(x)[0]
+        t = timer()
 
-    def learn(self,x,y):
+        x =  self.__activation(np.array([l]))
+        y = self.__feedForward(x)[0]
+
+        t = timer() - t
+        self.__logger("send", t)
+        return y
+
+    def learn(self, x, y):
+        t = timer()
+
         x = self.__activation(np.array([x]))
         y = np.array([y])
         self.__backPropagation(x,y)
 
-    def cost(self,x,y):    
+        t = timer() - t
+        self.__logger("learn", t)
+
+    def cost(self,x,y):
+        t = timer()
+
         np_x = np.array([x])
         np_y = np.array([y])
         np_x = self.__activation(np_x)
-        return self.__loss(self.__feedForward(np_x),np_y)
+
+        ret = self.__loss(self.__feedForward(np_x),np_y)
+
+        t = timer() - t
+        self.__logger("cost", t)
+        return ret

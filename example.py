@@ -74,10 +74,8 @@ def organize(l):
 def main():
 	compile_timer = timer()
 
-	#bia = CNeural([28*28,15,10],eta = 0.1)
-	bia = Neural([28*28,15,10],eta = 0.1)
-	#bia = CNeural([28*28, 10000, 5000, 100, 15,10], eta=0.1)
-	#bia = Neural([28*28, 10000, 5000, 100, 15,10], eta=0.1)
+	bia = Neural([28*28, 15, 10], eta=0.1)
+	bia2 = CNeural([28*28, 15, 10], eta=0.1)
 
 	print(Fore.WHITE + 'compiler time =', timer() - compile_timer)
 	processing_input = timer()
@@ -89,6 +87,7 @@ def main():
 	total_time = timer()
 
 	hit = 0
+	hit2 = 0
 	epoch_size = 100
 	test = 0
 	epoch = 0
@@ -110,23 +109,43 @@ def main():
 		for i in range(60000):
 
 			ans = bia.send(images[i])
-			if isOk(labels[i],ans):
+			if isOk(labels[i], ans):
 				hit = hit + 1
+			
+			ans = bia2.send(images[i])
+			if isOk(labels[i], ans):
+				hit2 = hit2 + 1
 
 			test = test + 1
 			out[labels[i]] = 1.0
-			bia.learn(images[i],out)
-			##eixo_x.append(i)
-			##eixo_y.append(bia.cost(images[i],out))
+
+			bia1_timer = timer()
+			bia.learn(images[i], out)
+			bia1_timer = timer() - bia1_timer
+			
+			bia2_timer = timer()
+			bia2.learn(images[i], out)
+			bia2_timer = timer() - bia2_timer
+
+			bia1_timer *= 1000
+			bia2_timer *= 1000
+
+			bia1_timer = round(bia1_timer, 3)
+			bia2_timer = round(bia2_timer, 3)
+
 			out[labels[i]] = 0.0
 
 			if test == epoch_size:
 				rate = hit/epoch_size
-				print(Fore.WHITE + "epoch {}: rate = {}, time = {}s".format(epoch,rate, round(timer() - start, 3)))
+				print(Fore.WHITE + "(bia1) epoch {}: rate = {}, learn = {}ms".format(epoch, rate, bia1_timer))
+				rate = hit2/epoch_size
+				print(Fore.WHITE + "(bia2) epoch {}: rate = {}, learn = {}ms".format(epoch, rate, bia2_timer))
+				print(Fore.GREEN + "-------")
 				start = timer()
 				epoch = epoch + 1
 				test = 0
 				hit = 0
+				hit2 = 0
 				eixo_x.append(epoch)
 				eixo_y.append(rate)
 
@@ -156,11 +175,6 @@ def main():
 			acerto = True
 
 		org = organize(ans)
-
-		'''if acerto:
-			print(Fore.WHITE + "[OK] => {}".format(org))
-		else:
-			print(Fore.WHITE + "[ERROR - {}] => {}".format(labels[i],org))'''
 
 	print(Fore.WHITE + "Total score: {}/{} => {}".format(hit,10000,hit/10000))
 
