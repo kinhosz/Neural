@@ -191,11 +191,11 @@ class Neural(object):
         self.__logger("dlayer", t)
         return arr
         
-    def __feedForward(self,x):
+    def __feedForward(self, x):
         t = timer()
 
         for w, b in zip(self.__weights,self.__biases):
-            x = self.__layer(self.__activation(x),w,b)
+            x = self.__layer(self.__activation(x), w, b)
 
         y = self.__selector(x)
 
