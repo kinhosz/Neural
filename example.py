@@ -74,8 +74,8 @@ def organize(l):
 def main():
 	compile_timer = timer()
 
-	bia = Neural([28*28, 15, 10], eta=0.1)
-	bia2 = CNeural([28*28, 15, 10], eta=0.1)
+	bia = Neural([28*28, 100, 15, 10], eta=0.1, gpu=True)
+	bia2 = CNeural([28*28, 100, 15, 10], eta=0.1)
 
 	print(Fore.WHITE + 'compiler time =', timer() - compile_timer)
 	processing_input = timer()
@@ -100,6 +100,9 @@ def main():
 		out.append(0.0)
 	
 	start = timer()
+
+	acmb1 = 0.0
+	acmb2 = 0.0
 
 	for lazy in range(30):
 		train_test = [(x,y) for x, y in zip(images,labels)]
@@ -130,17 +133,22 @@ def main():
 			bia1_timer *= 1000
 			bia2_timer *= 1000
 
-			bia1_timer = round(bia1_timer, 3)
-			bia2_timer = round(bia2_timer, 3)
+			acmb1 += bia1_timer
+			acmb2 += bia2_timer
+
+			acmb1 = round(acmb1, 3)
+			acmb2 = round(acmb2, 3)
 
 			out[labels[i]] = 0.0
 
 			if test == epoch_size:
 				rate = hit/epoch_size
-				print(Fore.WHITE + "(bia1) epoch {}: rate = {}, learn = {}ms".format(epoch, rate, bia1_timer))
+				print(Fore.WHITE + "(bia1) epoch {}: rate = {}, learn = {}ms".format(epoch, rate, acmb1))
 				rate = hit2/epoch_size
-				print(Fore.WHITE + "(bia2) epoch {}: rate = {}, learn = {}ms".format(epoch, rate, bia2_timer))
+				print(Fore.WHITE + "(bia2) epoch {}: rate = {}, learn = {}ms".format(epoch, rate, acmb2))
 				print(Fore.GREEN + "-------")
+				acmb1 = 0.0
+				acmb2 = 0.0
 				start = timer()
 				epoch = epoch + 1
 				test = 0
