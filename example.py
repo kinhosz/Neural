@@ -1,5 +1,6 @@
 import random
-from Deep import CNeural, Neural
+from Deep import Neural as CNeural
+from Deep import Neural
 import matplotlib.pyplot as plt
 from PIL import Image
 from timeit import default_timer as timer
