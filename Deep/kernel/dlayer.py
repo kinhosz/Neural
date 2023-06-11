@@ -5,7 +5,6 @@ from .vars import add
 from ..transfer.loader import loadTo
 
 def dlayer(w, alpha, buffer):
-    #print("dlayer")
     LEN = w.shape[0]
     LEN2 = w.shape[1]
 
@@ -17,5 +16,4 @@ def dlayer(w, alpha, buffer):
     dotMatrix_derivate[kernelConfig3D(1, LEN, LEN2)](buffer, w_dvc, alpha_dvc)
     cuda.synchronize()
 
-    #arr = arr_dvc.copy_to_host()
     return buffer

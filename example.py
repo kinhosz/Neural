@@ -1,5 +1,4 @@
 import random
-from Deep import Neural as CNeural
 from Deep import Neural
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -76,7 +75,7 @@ def main():
 	compile_timer = timer()
 
 	bia = Neural([28*28, 100, 15, 10], eta=0.1, gpu=True)
-	bia2 = CNeural([28*28, 100, 15, 10], eta=0.1)
+	bia2 = Neural([28*28, 100, 15, 10], eta=0.1)
 
 	print(Fore.WHITE + 'compiler time =', timer() - compile_timer)
 	processing_input = timer()

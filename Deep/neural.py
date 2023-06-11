@@ -3,7 +3,7 @@ from .lib.GPU import *
 from timeit import default_timer as timer
 from colorama import Fore, init
 from .kernel import *
-from .transfer import loadTo, preregister
+from .transfer import loadTo
 
 init()
 MINIMUMBLOCKSIZE = 28
@@ -21,7 +21,6 @@ class Neural(object):
         self.__biases = [np.random.randn(1,x) for x in sizes[1:]]
         self.__gpuMode = gpu
         self.__logs = {}
-        self.__mapper = {}
 
         if random_weights:
             self.__weights = [np.random.uniform(-2,2,x*y).reshape((x, y)) for x,y in zip(sizes[:-1], sizes[1:])]
@@ -29,7 +28,6 @@ class Neural(object):
             self.__weights = [np.ones(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
 
         t = timer()
-        self.__register()
         self.__reserveMemo()
         t = timer() - t
     
@@ -109,30 +107,6 @@ class Neural(object):
         for stream in streams:
             stream.synchronize()
 
-    def __register(self):
-        if self.__gpuMode == False:
-            return None
-        
-        streams = []
-
-        for bias in self.__biases:
-            stream = cuda.stream()
-            self.__mapper[id(bias)] = cuda.to_device(bias, stream=stream)
-            streams.append(stream)
-        
-        for weight in self.__weights:
-            stream = cuda.stream()
-            self.__mapper[id(weight)] = cuda.to_device(weight, stream=stream)
-            streams.append(stream)
-        
-        for stream in streams:
-            stream.synchronize()
-        
-        for bias in self.__biases:
-            preregister(id(bias))
-        for weigth in self.__weights:
-            preregister(id(weigth))
-
     def logs(self):
         return self.__logs
 
@@ -146,30 +120,13 @@ class Neural(object):
             color = Fore.RED
         
         if dbg:
-            print(color + "{}: {}ms".format(method, delta))
-    
-    def __translate(self, *args):
-        mapped = []
-        for arg in args:
-            if cuda.is_cuda_array(arg):
-                mapped.append(arg)
-            elif id(arg) in self.__mapper.keys():
-                mapped.append(self.__mapper[id(arg)])
-            else:
-                arg_dvc = cuda.to_device(arg)
-                self.__mapper[id(arg)] = arg_dvc
-                mapped.append(arg_dvc)
-                print("id = {}".format(id(arg)))
-
-        return mapped
+            print(color + "{}: {}ms".format(method, delta))   
 
     def __swapper(self, *args, buffer, GPURunner, CPURunner):
         if self.__gpuMode == False:
             return CPURunner(*args)
         else:
-            new_args = self.__translate(*args)
-
-            return GPURunner(*new_args, buffer)
+            return GPURunner(*args, buffer)
 
     def __loss(self, predicted, target, buffer=None):
         return self.__swapper(predicted, target, buffer=buffer, GPURunner=loss, CPURunner=mse_cpu)

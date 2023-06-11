@@ -5,7 +5,6 @@ from .vars import add
 from ..transfer.loader import loadTo
 
 def selector(z, buffer):
-    #print("selector")
     LEN = z.shape[1]
 
     t = timer()
@@ -18,5 +17,4 @@ def selector(z, buffer):
     softmax_p2[kernelConfig1D(LEN)](buffer, res_dvc)
     cuda.synchronize()
 
-    #arr = arr_dvc.copy_to_host()
     return buffer
