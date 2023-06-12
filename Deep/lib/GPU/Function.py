@@ -120,15 +120,20 @@ def dotMatrix(arr, A, B):
 	x, y = cuda.grid(2)
 	
 	temp = cuda.shared.array(shape=DIM2, dtype=float64)
+	sA = cuda.shared.array(shape=(1, DIM2[0]), dtype=float64)
+
 	tx = cuda.threadIdx.x
 	ty = cuda.threadIdx.y
 	temp[tx, ty] = float64(.0)
-	cuda.syncthreads()
 
 	if x >= B.shape[0] or y >= B.shape[1]:
 		return
+	
+	if ty == 0:
+		sA[0, tx] = A[0, x]
+	cuda.syncthreads()
 
-	temp[tx, ty] = A[0, x] * B[x, y]
+	temp[tx, ty] = sA[0, tx] * B[x, y]
 	cuda.syncthreads()
 
 	if tx != 0:
