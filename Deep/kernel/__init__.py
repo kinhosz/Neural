@@ -8,3 +8,4 @@ from .loss import loss
 from .selector import selector
 from .transpose import transpose
 from .updateWeights import updateWeight
+from .vars import get, reset

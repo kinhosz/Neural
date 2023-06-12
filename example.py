@@ -1,9 +1,10 @@
 import random
-from Deep import CNeural, Neural
+from Deep import Neural
 import matplotlib.pyplot as plt
 from PIL import Image
 from timeit import default_timer as timer
 from colorama import Fore, init
+import numpy as np
 
 def read_image_files(url):
 	f = open(url,"rb")
@@ -71,11 +72,24 @@ def organize(l):
 
 	return ret
 
+def genSinapses(layers):
+	brain = {
+		'biases': [],
+		'weights': []
+	}
+
+	brain['biases'] = [np.random.uniform(0, -1, x).reshape((1, x)) for x in layers[1:]]
+	brain['weights'] = [np.random.uniform(-2, 2, x*y).reshape((x, y)) for x,y in zip(layers[:-1], layers[1:])]
+
+	return brain
+
 def main():
 	compile_timer = timer()
 
-	bia = Neural([28*28, 100, 15, 10], eta=0.1, gpu=True)
-	bia2 = CNeural([28*28, 100, 15, 10], eta=0.1)
+	sinapses = genSinapses([28*28, 100, 15, 10])
+
+	bia = Neural([28*28, 100, 15, 10], eta=0.1, gpu=True, brain=sinapses)
+	bia2 = Neural([28*28, 100, 15, 10], eta=0.1, brain=sinapses)
 
 	print(Fore.WHITE + 'compiler time =', timer() - compile_timer)
 	processing_input = timer()
@@ -111,12 +125,12 @@ def main():
 		labels = [y for (x,y) in train_test]
 		for i in range(60000):
 
-			ans = bia.send(images[i])
-			if isOk(labels[i], ans):
+			ans1 = bia.send(images[i])
+			if isOk(labels[i], ans1):
 				hit = hit + 1
 			
-			ans = bia2.send(images[i])
-			if isOk(labels[i], ans):
+			ans2 = bia2.send(images[i])
+			if isOk(labels[i], ans2):
 				hit2 = hit2 + 1
 
 			test = test + 1
