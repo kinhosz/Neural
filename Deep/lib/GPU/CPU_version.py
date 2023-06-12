@@ -7,7 +7,7 @@ def mse_cpu(predicted, target):
 def mse_derivate_cpu(predicted, target):
 	return (predicted - target)
 
-def softmax_cpu(z):
+def softmax_cpu(z, *args):
 	z = np.exp(z)
 	sumT = z.sum()
 	z = z/sumT

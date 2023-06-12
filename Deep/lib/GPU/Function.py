@@ -1,5 +1,8 @@
 import math
-from numba import cuda, float64
+from numba import cuda, float64, float32, int64
+
+DIM1 = (1024, )
+DIM2 = (32, 32)
 
 @cuda.jit
 def copy(arr, A):
@@ -40,11 +43,26 @@ def mse_derivate(result, predicted, target):
 
 @cuda.jit
 def softmax_p1(arr, z, res):
-	x = cuda.grid(1)
+	local_sum = cuda.shared.array(shape=DIM1, dtype=float32)
 
-	if x < arr.shape[1]:
-		arr[0, x] = math.exp(z[0, x])
-		cuda.atomic.add(res, 0, arr[0, x])
+	x = cuda.grid(1)
+	tx = cuda.threadIdx.x
+
+	if x >= arr.shape[1]:
+		return
+
+	val = math.exp(z[0, x])
+	arr[0, x] = val
+	local_sum[tx] = val
+	cuda.syncthreads()
+
+	if tx != 0:
+		return
+	
+	for i in range(1, DIM1[0]):
+		local_sum[0] += local_sum[i]
+
+	cuda.atomic.add(res, 0, local_sum[0])
 
 @cuda.jit
 def softmax_p2(arr, sumT):

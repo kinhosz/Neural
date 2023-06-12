@@ -27,6 +27,10 @@ def kernelConfig2D(size_x, size_y):
 			t[i] *= 2
 			upd = True
 	
+	# change this
+	t[0] = 32
+	t[1] = 32
+	
 	blockspergrid_x = ceil(size_x, t[0])
 	blockspergrid_y = ceil(size_y, t[1])
 
