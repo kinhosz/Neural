@@ -94,6 +94,9 @@ class Neural(object):
         for i in range(LEN-2, -1, -1):
             self.__reserveArr('d_layer', (1, self.__architecture[i]), streams)
 
+    def __reserveExtra(self, streams):
+        self.__reserveArr('extra', (1, ), streams)
+
     def __reserveMemo(self):
         if self.__gpuMode == False:
             return None
@@ -107,6 +110,7 @@ class Neural(object):
             'd_activation': [],
             'transpose': [],
             'd_layer': [],
+            'extra': [],
         }
 
         streams = []
@@ -118,6 +122,7 @@ class Neural(object):
         self.__reserveDActivation(streams)
         self.__reserveTranspose(streams)
         self.__reserveDLayer(streams)
+        self.__reserveExtra(streams)
 
         for stream in streams:
             stream.synchronize()
@@ -138,8 +143,14 @@ class Neural(object):
             print(color + "{}: {}ms".format(method, delta))
 
     def __swapper(self, *args, buffer, GPURunner, CPURunner):
+        arr = None
+        t = timer()
+
+        name = '[GPU] ' + GPURunner.__name__ if self.__gpuMode else '[CPU] ' + GPURunner.__name__
+        dbg = True if GPURunner.__name__ == 'transpose' else False
+
         if self.__gpuMode == False:
-            return CPURunner(*args)
+            arr = CPURunner(*args)
         else:
             mapped_args = []
             for arg in args:
@@ -152,7 +163,12 @@ class Neural(object):
                     print("register")
                     assert False
 
-            return GPURunner(*mapped_args, buffer)
+            arr = GPURunner(*mapped_args, buffer)
+
+        t = timer() - t
+        self.__logger(name, t, dbg=False)
+
+        return arr
 
     def __loss(self, predicted, target, buffer=None):
         return self.__swapper(predicted, target, buffer=buffer, GPURunner=loss, CPURunner=mse_cpu)
@@ -161,7 +177,7 @@ class Neural(object):
         return self.__swapper(predicted, target, buffer=buffer, GPURunner=dloss, CPURunner=mse_derivate_cpu)
 
     def __selector(self, z, buffer=None):
-        return self.__swapper(z, buffer=buffer, GPURunner=selector, CPURunner=softmax_cpu)
+        return self.__swapper(z, self.__getReserve('extra', 0), buffer=buffer, GPURunner=selector, CPURunner=softmax_cpu)
 
     def __d_selector(self, z, alpha, buffer=None):
         return self.__swapper(z, alpha, buffer=buffer, GPURunner=dselector, CPURunner=softmax_derivate_cpu)
@@ -173,8 +189,7 @@ class Neural(object):
         return self.__swapper(z, alpha, buffer=buffer, GPURunner=dactivation, CPURunner=sigmoid2_derivate_cpu)
     
     def __layer(self, x, w, b, buffer=None):
-        ret = self.__swapper(x, w, b, buffer=buffer, GPURunner=layer, CPURunner=dotMatrix_cpu)
-        return ret
+        return self.__swapper(x, w, b, buffer=buffer, GPURunner=layer, CPURunner=dotMatrix_cpu)
 
     def __d_layer(self, _, w, alpha, buffer=None):
         return self.__swapper(w, alpha, buffer=buffer, GPURunner=dlayer, CPURunner=dotMatrix_derivate_cpu)
@@ -257,7 +272,8 @@ class Neural(object):
             self.__biases[-l] = self.__updateWeight(self.__biases[-l], self.__eta, nabla_b)
 
         t = timer() - t
-        self.__logger("backpropagation", t)
+        prefix = '[GPU] ' if self.__gpuMode else '[CPU] '
+        self.__logger(prefix + "backpropagation", t, dbg=False)
     
     def __buildMsg(self, x):
         if self.__gpuMode:
