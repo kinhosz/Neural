@@ -13,6 +13,8 @@ def dlayer(w, alpha, buffer):
     t = timer() - t
     add(t)
 
+    memset[kernelConfig2D(buffer.shape[0], buffer.shape[1])](buffer)
+    cuda.synchronize()
     dotMatrix_derivate[kernelConfig3D(1, LEN, LEN2)](buffer, w_dvc, alpha_dvc)
     cuda.synchronize()
 

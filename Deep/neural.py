@@ -13,7 +13,7 @@ def ceil(A, B):
 
 class Neural(object):
 
-    def __init__(self, sizes, eta=0.01, random_weights=True, gpu=False):
+    def __init__(self, sizes, eta=0.01, gpu=False, brain=None):
         self.__eta = np.array([eta])
         self.__num_layers = len(sizes)
         self.__architecture = sizes
@@ -22,29 +22,29 @@ class Neural(object):
         self.__gpuMode = gpu
         self.__logs = {}
         self.__mapper = {}
-        self.__randomWeights = random_weights
 
         t = timer()
-        self.__setBrain()
+        self.__setBrain(brain)
         self.__reserveMemo()
         t = timer() - t
     
-    def __setBrain(self):
-        if self.__gpuMode:
-            self.__eta = cuda.to_device(self.__eta)
-            self.__biases = [cuda.to_device(np.random.randn(1,x)) for x in self.__architecture[1:]]
-
-            if self.__randomWeights:
-                self.__weights = [cuda.to_device(np.random.uniform(-2,2,x*y).reshape((x, y))) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
-            else:
-                self.__weights = [cuda.to_device(np.ones(x,y)) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
+    def __setBrain(self, brain):
+        if brain:
+            self.__biases = brain['biases']
+            self.__weights = brain['weights']
         else:
-            self.__biases = [np.random.randn(1,x) for x in self.__architecture[1:]]
+            self.__biases = [np.random.uniform(0, -1, x).reshape((1,x)) for x in self.__architecture[1:]]
+            self.__weights = [np.random.uniform(-2,2,x*y).reshape((x, y)) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
 
-            if self.__randomWeights:
-                self.__weights = [np.random.uniform(-2,2,x*y).reshape((x, y)) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
-            else:
-                self.__weights = [np.ones(x,y) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
+        if not self.__gpuMode:
+            return None
+
+        self.__eta = cuda.to_device(self.__eta)
+        cuda_biases = [cuda.to_device(bias) for bias in self.__biases]
+        self.__biases = cuda_biases
+
+        cuda_weights = [cuda.to_device(weight) for weight in self.__weights]
+        self.__weights = cuda_weights
     
     def __getReserve(self, kernel, pos):
         if self.__gpuMode == False:
@@ -188,12 +188,14 @@ class Neural(object):
     def __feedForward(self, x):
         t = timer()
 
-        activation_pointer = 1
+        activation_pointer = 0
         layer_pointer = 0
 
         for w, b in zip(self.__weights,self.__biases):
             arr = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
-            x = self.__layer(arr, w, b, buffer=self.__getReserve('activation', layer_pointer))
+
+            x = self.__layer(arr, w, b, buffer=self.__getReserve('layer', layer_pointer))
+
             activation_pointer += 1
             layer_pointer += 1
 
@@ -226,6 +228,7 @@ class Neural(object):
         y = self.__selector(x, buffer=self.__getReserve('selector', 0))
 
         derror = self.__d_loss(y, target, buffer=self.__getReserve('d_loss', 0))
+
         derror = self.__d_selector(z[self.__num_layers - 1], derror, buffer=self.__getReserve('d_selector', 0))
 
         d_activation_pointer = 0
@@ -237,13 +240,16 @@ class Neural(object):
             b = self.__biases[-l]
 
             derror = self.__d_activation(activations[-l], derror, buffer=self.__getReserve('d_activation', d_activation_pointer))
+
             d_activation_pointer += 1
             
             nabla_w = self.__transpose(z[-l-1], derror, buffer=self.__getReserve('transpose', transpose_pointer))
             transpose_pointer += 1
 
             nabla_b = derror # error for each bias
+
             derror =  self.__d_layer(z[-l-1], w, derror, buffer=self.__getReserve('d_layer', d_layer_pointer))
+
             d_layer_pointer += 1
 
             self.__weights[-l] = self.__updateWeight(self.__weights[-l], self.__eta, nabla_w)
@@ -261,13 +267,15 @@ class Neural(object):
     def send(self, l):
         t = timer()
 
-        x =  self.__activation(self.__buildMsg(np.array([l])), buffer=self.__getReserve('activation', 0))
+        x =  self.__buildMsg(np.array([l]))
         arr = self.__feedForward(x)
+
         hst, = loadTo(arr, mode='CPU')
         y = hst[0]
 
         t = timer() - t
         self.__logger("send", t)
+
         return y
 
     def learn(self, x, y):
@@ -275,6 +283,7 @@ class Neural(object):
 
         x = self.__activation(self.__buildMsg(np.array([x])), buffer=self.__getReserve('activation', 0))
         y = self.__buildMsg(np.array([y]))
+
         self.__backPropagation(x, y)
 
         t = timer() - t
