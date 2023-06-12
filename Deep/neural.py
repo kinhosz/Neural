@@ -18,18 +18,33 @@ class Neural(object):
         self.__num_layers = len(sizes)
         self.__architecture = sizes
         self.__weights = None
-        self.__biases = [np.random.randn(1,x) for x in sizes[1:]]
+        self.__biases = None
         self.__gpuMode = gpu
         self.__logs = {}
-
-        if random_weights:
-            self.__weights = [np.random.uniform(-2,2,x*y).reshape((x, y)) for x,y in zip(sizes[:-1], sizes[1:])]
-        else:
-            self.__weights = [np.ones(x,y) for x,y in zip(sizes[:-1], sizes[1:])]
+        self.__mapper = {}
+        self.__randomWeights = random_weights
 
         t = timer()
+        self.__setBrain()
         self.__reserveMemo()
         t = timer() - t
+    
+    def __setBrain(self):
+        if self.__gpuMode:
+            self.__eta = cuda.to_device(self.__eta)
+            self.__biases = [cuda.to_device(np.random.randn(1,x)) for x in self.__architecture[1:]]
+
+            if self.__randomWeights:
+                self.__weights = [cuda.to_device(np.random.uniform(-2,2,x*y).reshape((x, y))) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
+            else:
+                self.__weights = [cuda.to_device(np.ones(x,y)) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
+        else:
+            self.__biases = [np.random.randn(1,x) for x in self.__architecture[1:]]
+
+            if self.__randomWeights:
+                self.__weights = [np.random.uniform(-2,2,x*y).reshape((x, y)) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
+            else:
+                self.__weights = [np.ones(x,y) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
     
     def __getReserve(self, kernel, pos):
         if self.__gpuMode == False:
@@ -120,13 +135,24 @@ class Neural(object):
             color = Fore.RED
         
         if dbg:
-            print(color + "{}: {}ms".format(method, delta))   
+            print(color + "{}: {}ms".format(method, delta))
 
     def __swapper(self, *args, buffer, GPURunner, CPURunner):
         if self.__gpuMode == False:
             return CPURunner(*args)
         else:
-            return GPURunner(*args, buffer)
+            mapped_args = []
+            for arg in args:
+                if cuda.is_cuda_array(arg):
+                    mapped_args.append(arg)
+                else:
+                    arg_dvc = cuda.to_device(arg)
+                    mapped_args.append(arg_dvc)
+                    self.__mapper[id(arg)] = arg_dvc
+                    print("register")
+                    assert False
+
+            return GPURunner(*mapped_args, buffer)
 
     def __loss(self, predicted, target, buffer=None):
         return self.__swapper(predicted, target, buffer=buffer, GPURunner=loss, CPURunner=mse_cpu)
@@ -223,14 +249,19 @@ class Neural(object):
             self.__weights[-l] = self.__updateWeight(self.__weights[-l], self.__eta, nabla_w)
 
             self.__biases[-l] = self.__updateWeight(self.__biases[-l], self.__eta, nabla_b)
-        
+
         t = timer() - t
         self.__logger("backpropagation", t)
+    
+    def __buildMsg(self, x):
+        if self.__gpuMode:
+            return cuda.to_device(x)
+        return x
 
     def send(self, l):
         t = timer()
 
-        x =  self.__activation(np.array([l]), buffer=self.__getReserve('activation', 0))
+        x =  self.__activation(self.__buildMsg(np.array([l])), buffer=self.__getReserve('activation', 0))
         arr = self.__feedForward(x)
         hst, = loadTo(arr, mode='CPU')
         y = hst[0]
@@ -242,8 +273,8 @@ class Neural(object):
     def learn(self, x, y):
         t = timer()
 
-        x = self.__activation(np.array([x]), buffer=self.__getReserve('activation', 0))
-        y = np.array([y])
+        x = self.__activation(self.__buildMsg(np.array([x])), buffer=self.__getReserve('activation', 0))
+        y = self.__buildMsg(np.array([y]))
         self.__backPropagation(x, y)
 
         t = timer() - t
@@ -252,8 +283,8 @@ class Neural(object):
     def cost(self, x, y):
         t = timer()
 
-        np_x = np.array([x])
-        np_y = np.array([y])
+        np_x = self.__buildMsg(np.array([x]))
+        np_y = self.__buildMsg(np.array([y]))
         np_x = self.__activation(np_x, buffer=self.__getReserve('activation', 0))
 
         ret = self.__loss(self.__feedForward(np_x),np_y)
