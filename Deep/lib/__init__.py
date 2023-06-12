@@ -1,1 +1,1 @@
-from . import CPU, GPU
+from . import GPU
