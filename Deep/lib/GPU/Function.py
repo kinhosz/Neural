@@ -2,7 +2,7 @@ import math
 from numba import cuda, float64, float32, int64
 
 DIM1 = (1024, )
-DIM2 = (32, 32)
+DIM2 = (4, 256)
 
 @cuda.jit
 def copy(arr, A):

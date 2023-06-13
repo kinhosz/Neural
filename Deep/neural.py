@@ -133,6 +133,13 @@ class Neural(object):
     def __logger(self, method, delta, dbg=False):
         delta = round(delta * 1000, 3)
 
+        mode = '[GPU] ' if self.__gpuMode else '[CPU] '
+        name = mode + method
+
+        if name not in self.__logs.keys():
+            self.__logs[name] = []
+        self.__logs[name].append(delta)
+
         color = Fore.GREEN
         if delta >= 1.0:
             color = Fore.YELLOW
@@ -146,7 +153,7 @@ class Neural(object):
         arr = None
         t = timer()
 
-        name = '[GPU] ' + GPURunner.__name__ if self.__gpuMode else '[CPU] ' + GPURunner.__name__
+        name = GPURunner.__name__
         dbg = True if GPURunner.__name__ == 'transpose' else False
 
         if self.__gpuMode == False:
