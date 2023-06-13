@@ -1,5 +1,8 @@
 import math
-from numba import cuda, float64
+from numba import cuda, float64, float32, int64
+
+DIM1 = (1024, )
+DIM2 = (4, 256)
 
 @cuda.jit
 def copy(arr, A):
@@ -40,11 +43,27 @@ def mse_derivate(result, predicted, target):
 
 @cuda.jit
 def softmax_p1(arr, z, res):
-	x = cuda.grid(1)
+	local_sum = cuda.shared.array(shape=DIM1, dtype=float64)
 
-	if x < arr.shape[1]:
-		arr[0, x] = math.exp(z[0, x])
-		cuda.atomic.add(res, 0, arr[0, x])
+	x = cuda.grid(1)
+	tx = cuda.threadIdx.x
+	local_sum[tx] = float64(.0)
+
+	if x >= arr.shape[1]:
+		return
+
+	val = math.exp(z[0, x])
+	arr[0, x] = val
+	local_sum[tx] = val
+	cuda.syncthreads()
+
+	if tx != 0:
+		return
+	
+	for i in range(1, cuda.blockDim.x):
+		local_sum[0] += local_sum[i]
+
+	cuda.atomic.add(res, 0, local_sum[0])
 
 @cuda.jit
 def softmax_p2(arr, sumT):
@@ -97,16 +116,32 @@ def sum(arr, C):
 	arr[x, y] += C[x, y]
 
 @cuda.jit
-def dotMatrix(arr, A, B, C):
-	x = cuda.grid(1)
+def dotMatrix(arr, A, B):
+	x, y = cuda.grid(2)
+	
+	temp = cuda.shared.array(shape=DIM2, dtype=float64)
+	sA = cuda.shared.array(shape=(1, DIM2[0]), dtype=float64)
 
-	if x >= arr.shape[1]:
+	tx = cuda.threadIdx.x
+	ty = cuda.threadIdx.y
+	temp[tx, ty] = float64(.0)
+
+	if x >= B.shape[0] or y >= B.shape[1]:
 		return
 	
-	arr[0, x] = float64(.0)
-	for k in range(A.shape[1]):
-		arr[0, x] += A[0, k] * B[k, x]
-	arr[0, x] += C[0, x]
+	if ty == 0:
+		sA[0, tx] = A[0, x]
+	cuda.syncthreads()
+
+	temp[tx, ty] = sA[0, tx] * B[x, y]
+	cuda.syncthreads()
+
+	if tx != 0:
+		return
+	
+	for i in range(1, cuda.blockDim.x):
+		temp[0, ty] += temp[i, ty]
+	cuda.atomic.add(arr, (0, y), temp[0, ty])
 
 @cuda.jit
 def dotMatrix_derivate(arr, w, alpha):

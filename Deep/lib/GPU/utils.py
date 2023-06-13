@@ -11,21 +11,18 @@ def kernelConfig1D(size_x):
 
 	return (blockspergrid_x, threads_x)
 
-def kernelConfig2D(size_x, size_y):
+def kernelConfig2D(size_x, size_y, shape=None):
 	threads = THREADSPERBLOCK
 
 	sz = [size_x, size_y]
 	t = [1, 1]
 
-	upd = True
-	while threads > 1 and upd:
-		upd = False
-		for i in range(2):
-			if t[i] >= sz[i] or threads == 1:
-				continue
-			threads //= 2
-			t[i] *= 2
-			upd = True
+	t[0] = 32
+	t[1] = 32
+
+	if shape:
+		t[0] = shape[0]
+		t[1] = shape[1]
 	
 	blockspergrid_x = ceil(size_x, t[0])
 	blockspergrid_y = ceil(size_y, t[1])
