@@ -1,2 +1,5 @@
 from .neural import Neural
-from . import lib
+
+__author__ = 'Kinhosz'
+__email__ = 'scruz.josecarlos@gmail.com'
+__version__ = '2.1.0'
