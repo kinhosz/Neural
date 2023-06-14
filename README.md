@@ -47,9 +47,7 @@ net_without_imported_model = Neural(sizes=[10, 200, 300, 50, 5], eta=0.1, gpu=Tr
 
 net_with_imported_model = Neural(brain_path='./pre-trained/mnist_model.brain', eta=0.1, gpu=True)
 '''
-    Uma rede com a arquitetura e todos os pesos e biases importados de um modelo previamente treinado dentro do caminho <brain_path>. Uma camada de input com 10 entradas e,
-    uma camada de output com 5 saídas. Taxa de aprendizado 0.1 e todos os pesos sinápticos
-    aleatórios.
+    Uma rede com a arquitetura e todos os pesos e biases importados de um modelo previamente treinado dentro do caminho <brain_path>.
 '''
 
 invalid_network = Neural(eta=0.1, gpu=True)
