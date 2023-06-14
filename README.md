@@ -1,7 +1,7 @@
 # Rede Neural V2
 Classe para uma rede neural feedforward com uma camada de entrada, camadas ocultas e uma camada de saída.
 
-A rede é chamada `Neural`, uma `CNN` que você pode importar do package `Deep`.
+A rede é chamada `Neural`, uma `CNN` que você pode importar do package `Kinho`.
 
 ## Métodos:
 ```py
@@ -31,7 +31,7 @@ def cost(input, output):
 
 Exemplo:
 ```py
-from Deep import Neural
+from Kinho import Neural
 
 net_without_imported_model = Neural(sizes=[10, 200, 300, 50, 5], eta=0.1, gpu=True)
 '''

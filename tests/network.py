@@ -1,4 +1,4 @@
-from Deep import CNeural, Neural
+from Kinho import CNeural, Neural
 from .utils import *
 import numpy as np
 

@@ -1,6 +1,6 @@
 import numpy as np
 from numba import cuda
-from Deep.lib.GPU import *
+from Kinho.lib.GPU import *
 from .utils import *
 
 def memset_test():
