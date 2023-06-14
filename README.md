@@ -1,7 +1,12 @@
 # Rede Neural V2
 Classe para uma rede neural feedforward com uma camada de entrada, camadas ocultas e uma camada de saída.
 
-A rede é chamada `Neural`, uma `CNN` que você pode importar do package `Deep`.
+A rede é chamada `Neural`, uma `CNN` que você pode importar do package `Kinho`.
+
+## Como instalar
+```
+pip install Kinho
+```
 
 ## Métodos:
 ```py
@@ -31,7 +36,7 @@ def cost(input, output):
 
 Exemplo:
 ```py
-from Deep import Neural
+from Kinho import Neural
 
 net_without_imported_model = Neural(sizes=[10, 200, 300, 50, 5], eta=0.1, gpu=True)
 '''
@@ -127,4 +132,4 @@ print(mse)
 # 0.027
 ```
 
-> O tipo de dado `.brain` é um formato totalmente autoral deste projeto, suas especificações no momento não apresentam documentações, mas você pode conferir manualmente dentro da pasta `Deep/brain`. Em breve, se necessário, haverá uma documentação mais explícita de como ler/criar este tipo de dado e quais especificações devem-se seguir para ser considerado um formato válido.
+> O tipo de dado `.brain` é um formato totalmente autoral deste projeto, suas especificações no momento não apresentam documentações, mas você pode conferir manualmente dentro da pasta `Kinho/brain`. Em breve, se necessário, haverá uma documentação mais explícita de como ler/criar este tipo de dado e quais especificações devem-se seguir para ser considerado um formato válido.

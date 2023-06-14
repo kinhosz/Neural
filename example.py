@@ -1,5 +1,5 @@
 import random
-from Deep import Neural
+from Kinho import Neural
 import matplotlib.pyplot as plt
 from PIL import Image
 from timeit import default_timer as timer
