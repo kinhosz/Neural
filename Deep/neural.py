@@ -4,6 +4,7 @@ from timeit import default_timer as timer
 from colorama import Fore, init
 from .kernel import *
 from .transfer import loadTo
+from .brain import Wrapper, Builder
 
 init()
 MINIMUMBLOCKSIZE = 28
@@ -13,10 +14,13 @@ def ceil(A, B):
 
 class Neural(object):
 
-    def __init__(self, sizes, eta=0.01, gpu=False, brain=None):
+    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False):
+        if not sizes and not brain_path:
+            raise TypeError('Should set `sizes` or `brain_path` params')
+        
         self.__eta = np.array([eta])
-        self.__num_layers = len(sizes)
-        self.__architecture = sizes
+        self.__num_layers = None
+        self.__architecture = None
         self.__weights = None
         self.__biases = None
         self.__gpuMode = gpu
@@ -24,15 +28,19 @@ class Neural(object):
         self.__mapper = {}
 
         t = timer()
-        self.__setBrain(brain)
+        self.__setBrain(Builder(brain_path) if brain_path else None, sizes)
         self.__reserveMemo()
         t = timer() - t
     
-    def __setBrain(self, brain):
+    def __setBrain(self, brain, sizes):
         if brain:
-            self.__biases = brain['biases']
-            self.__weights = brain['weights']
+            self.__num_layers = brain.size()
+            self.__architecture = brain.architecture()
+            self.__biases = brain.biases()
+            self.__weights = brain.weights()
         else:
+            self.__num_layers = len(sizes)
+            self.__architecture = sizes
             self.__biases = [np.random.uniform(0, -1, x).reshape((1,x)) for x in self.__architecture[1:]]
             self.__weights = [np.random.uniform(-2,2,x*y).reshape((x, y)) for x,y in zip(self.__architecture[:-1], self.__architecture[1:])]
 
@@ -324,3 +332,15 @@ class Neural(object):
         t = timer() - t
         self.__logger("cost", t)
         return ret
+    
+    def export(self, filename, path):
+        layers = []
+
+        for w, b in zip(self.__weights, self.__biases):
+            w_host, b_host = loadTo(w, b, mode='CPU')
+            layers.append((w_host, b_host))
+        
+        wrapper = Wrapper(layers)
+
+        with open(path + filename + '.brain', 'wb') as file:
+            file.write(wrapper.data())

@@ -88,8 +88,11 @@ def main():
 
 	sinapses = genSinapses([28*28, 100, 15, 10])
 
-	bia = Neural([28*28, 100, 15, 10], eta=0.1, gpu=True, brain=sinapses)
-	bia2 = Neural([28*28, 100, 15, 10], eta=0.1, brain=sinapses)
+	path = './pre-trained/mnist_digits.brain'
+
+	bia = Neural(brain_path=path, eta=0.1, gpu=False)
+	#bia = Neural(sizes=[28*28, 100, 15, 10], eta=0.1)
+	bia2 = Neural(sizes=[28*28, 100, 15, 10], eta=0.1)
 
 	print(Fore.WHITE + 'compiler time =', timer() - compile_timer)
 	processing_input = timer()
@@ -118,7 +121,7 @@ def main():
 	acmb1 = 0.0
 	acmb2 = 0.0
 
-	for lazy in range(30):
+	for lazy in range(1):
 		train_test = [(x,y) for x, y in zip(images,labels)]
 		random.shuffle(train_test)
 		images = [x for (x,y) in train_test]
@@ -170,6 +173,8 @@ def main():
 				hit2 = 0
 				eixo_x.append(epoch)
 				eixo_y.append(rate)
+
+	bia.export(filename='mnist_digits', path='./pre-trained/')
 
 	images = read_image_files("data/t10k-images.idx3-ubyte")
 	labels = read_label_files("data/t10k-labels.idx1-ubyte")
