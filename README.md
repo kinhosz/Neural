@@ -33,11 +33,23 @@ Exemplo:
 ```py
 from Deep import Neural
 
-net = Neural([10, 200, 300, 50, 5], eta=0.1, gpu=True)
+net_without_imported_model = Neural(sizes=[10, 200, 300, 50, 5], eta=0.1, gpu=True)
 '''
     Uma rede com 3 camadas ocultas (200, 300, 50). Uma camada de input com 10 entradas e,
     uma camada de output com 5 saídas. Taxa de aprendizado 0.1 e todos os pesos sinápticos
     aleatórios.
+'''
+
+net_with_imported_model = Neural(brain_path='./pre-trained/mnist_model.brain', eta=0.1, gpu=True)
+'''
+    Uma rede com a arquitetura e todos os pesos e biases importados de um modelo previamente treinado dentro do caminho <brain_path>. Uma camada de input com 10 entradas e,
+    uma camada de output com 5 saídas. Taxa de aprendizado 0.1 e todos os pesos sinápticos
+    aleatórios.
+'''
+
+invalid_network = Neural(eta=0.1, gpu=True)
+'''
+    Um erro será gerado, pois é necessária a presença da arquitetura (sizes) ou modelo pré-treinado (brain_path).
 '''
 ```
 
@@ -115,4 +127,4 @@ print(mse)
 # 0.027
 ```
 
-> O tipo de dado `.brain` é um formato totalmente autoral deste projeto, suas especificações no momento não apresentam documentações, mas você pode conferir manualmente dentro da pastar `Deep/brain`. Em breve, se necessário, haverá uma documentação mais explícita de como ler/criar este tipo de dado e quais especificações devem-se seguir para ser considerado um formato válido.
+> O tipo de dado `.brain` é um formato totalmente autoral deste projeto, suas especificações no momento não apresentam documentações, mas você pode conferir manualmente dentro da pasta `Deep/brain`. Em breve, se necessário, haverá uma documentação mais explícita de como ler/criar este tipo de dado e quais especificações devem-se seguir para ser considerado um formato válido.
