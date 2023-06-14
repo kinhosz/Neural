@@ -3,6 +3,11 @@ Classe para uma rede neural feedforward com uma camada de entrada, camadas ocult
 
 A rede é chamada `Neural`, uma `CNN` que você pode importar do package `Kinho`.
 
+## Como instalar
+```
+pip install Kinho
+```
+
 ## Métodos:
 ```py
 def __init__(sizes=None, brain_path=None, eta=0.01, gpu=False):
