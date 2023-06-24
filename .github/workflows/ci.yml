@@ -9,7 +9,7 @@ jobs:
   Test:
     name: Tests
     runs-on: [ubuntu-latest, gpu]
-    - steps:
+    steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v3
         with:
