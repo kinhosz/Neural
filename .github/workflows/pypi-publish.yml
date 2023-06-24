@@ -1,0 +1,47 @@
+name: Upload Python Package
+
+run-name: Deploy by ${{ github.actor }}
+
+on:
+  push:
+    branches:
+      - 'main'
+
+jobs:
+  Deploy:
+    name: Deploy on PyPi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-pyton@v3
+        with:
+          python-version: '3.x'
+      - name: Create Virtual Env
+        run: |
+          python -m venv venv/
+      - name: Active Virtual Env
+        run: |
+          source venv/bin/activate
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Install Setuptolls
+        run: |
+          pip install --upgrade setuptools
+      - name: Install wheel
+        run: |
+          pip install wheel
+      - name: Packing
+        run: |
+          python setup.py sdist
+      - name: Build wheel
+        run: |
+          python setup.py bdist_wheel        
+      - name: Publish on PyPi
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_KINHO_TOKEN }}
