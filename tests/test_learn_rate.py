@@ -21,7 +21,6 @@ def learn_rate(robot: Neural, epoch: int):
     train = zipped_data[TEST_SIZE:]
     
     for i in range(epoch):
-        print(i)
         for input in train:
             robot.learn(x=input[0], y=shared.densityArr(input[1], 10))
     

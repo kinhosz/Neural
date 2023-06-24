@@ -8,7 +8,7 @@ on:
 jobs:
   Test:
     name: Tests
-    runs-on: gpu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v3
@@ -26,9 +26,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      - name: Install PyTest
+      - name: Running CPU tests
         run: |
-          pip install pytest
-      - name: Running Pytest
-        run: |
-          pytest
+          python Tester.py
