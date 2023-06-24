@@ -20,9 +20,12 @@ email = re.search(
     '^__email__ = [\'\"]([^\'\"]+)[\'\"]', init_py, re.MULTILINE
 ).group(1)
 
+packages = find_packages()
+packages.remove('tests')
+
 setup(
     name='Kinho',
-    packages=find_packages(),
+    packages=packages,
     version=version,
     description='A library to classify images with deep learning.',
     long_description='The library features the "Neural" model, which is a Convolutional Neural ' \
