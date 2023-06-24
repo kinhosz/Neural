@@ -1,0 +1,31 @@
+name: Continuos integration
+
+run-name: Tests
+
+on:
+  pull_request:
+
+jobs:
+  Test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v3
+        with:
+          python-version: '3.x'
+      - name: Creating Virtual Env
+        run: |
+          python -m venv venv/
+      - name: Open Virtual Env
+        run: |
+          source venv/bin/activate
+      - name: Upgrade pip
+        run: |
+          pip install --upgrade pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Running CPU tests
+        run: |
+          python Tester.py
