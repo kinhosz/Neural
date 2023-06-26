@@ -1,7 +1,8 @@
-__pycache__
 /pre-trained
 /Kinho.egg-info
 /dist
 Kinho.rar
 /build
 venv*
+tmp
+*cache*
