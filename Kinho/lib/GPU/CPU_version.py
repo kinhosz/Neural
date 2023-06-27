@@ -38,3 +38,9 @@ def transposeDot_cpu(x, derror):
 def updateWeights_cpu(w, eta, nabla):
 	w = w - (eta * nabla)
 	return w
+
+def copy_cpu():
+    pass
+
+def sgd_cpu():
+    pass

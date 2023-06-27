@@ -14,7 +14,7 @@ def ceil(A, B):
 
 class Neural(object):
 
-    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False):
+    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1):
         if not sizes and not brain_path:
             raise TypeError('Should set `sizes` or `brain_path` params')
         
@@ -24,11 +24,17 @@ class Neural(object):
         self.__weights = None
         self.__biases = None
         self.__gpuMode = gpu
+        self.__mini_batch = mini_batch_size
+        self.__residual = None
+        self.__target = None
+        self.__fill = 0
         self.__logs = {}
         self.__mapper = {}
+        self.__tmp = {}
 
         t = timer()
         self.__setBrain(Builder(brain_path) if brain_path else None, sizes)
+        self.__setMiniBatchMemo()
         self.__reserveMemo()
         t = timer() - t
     
@@ -53,6 +59,45 @@ class Neural(object):
 
         cuda_weights = [cuda.to_device(weight) for weight in self.__weights]
         self.__weights = cuda_weights
+
+    def __setMiniBatchMemo(self):
+        if 2**int(math.log2(self.__mini_batch)) != self.__mini_batch:
+            raise TypeError("Mini-batch size is invalid. You can use {}".format(2**int(math.log2(self.__mini_batch))))
+        
+        layers = len(self.__weights)
+        activations = layers + 1
+        selectors = 1
+        
+        edges = layers + activations + selectors
+        
+        self.__residual = []
+        
+        self.__residual.append(np.empty((self.__mini_batch, 1, self.__architecture[0])))
+        
+        for i in range(1, len(self.__architecture) - 1):
+            shape = (self.__mini_batch, 1, self.__architecture[i])
+            self.__residual.append(np.empty(shape)) # after layer
+            self.__residual.append(np.empty(shape)) # after activation
+        
+        shape = (self.__mini_batch, 1, self.__architecture[-1])
+        self.__residual.append(np.empty(shape)) # selector
+        
+        self.__target = np.empty((self.__mini_batch, self.__architecture[-1]))
+        
+        if not self.__gpuMode:
+            return None
+        
+        residual_stream = cuda.stream()
+        target_stream = cuda.stream()
+        
+        raw_residual = cuda.to_device(self.__residual, stream=residual_stream)
+        raw_target = cuda.to_device(self.__target, stream=target_stream)
+        
+        residual_stream.synchronize()
+        target_stream.synchronize()
+        
+        self.__target = raw_target
+        self.__residual = raw_residual
     
     def __getReserve(self, kernel, pos):
         if self.__gpuMode == False:
@@ -60,8 +105,17 @@ class Neural(object):
         
         return self.__buffer[kernel][pos]
     
-    def __reserveArr(self, module_name, shape, streams):
-        arr = cuda.device_array(shape, dtype=np.float64)
+    def __addMiniBatchOnShape(self, shape):
+        new_shape = (self.__mini_batch, ) + shape
+        return new_shape
+    
+    def __reserveArr(self, module_name, shape, streams, addMiniBatch=True):
+        new_shape = shape
+        
+        if addMiniBatch:
+            new_shape = self.__addMiniBatchOnShape(shape)
+
+        arr = cuda.device_array(new_shape, dtype=np.float64)
 
         stream = cuda.stream()
         self.__buffer[module_name].append(cuda.to_device(arr, stream=stream))
@@ -105,6 +159,14 @@ class Neural(object):
     def __reserveExtra(self, streams):
         self.__reserveArr('extra', (1, ), streams)
 
+    def __reserveWeight(self, streams):
+        for i in range(len(self.__weights)):
+            self.__reserveArr('weight', self.__weights[-i-1].shape, streams)
+    
+    def __reserveBias(self, streams):
+        for i in range(len(self.__biases)):
+            self.__reserveArr('bias', self.__biases[-i-1].shape, streams)
+
     def __reserveMemo(self):
         if self.__gpuMode == False:
             return None
@@ -119,6 +181,8 @@ class Neural(object):
             'transpose': [],
             'd_layer': [],
             'extra': [],
+            'weight': [],
+            'bias': [],
         }
 
         streams = []
@@ -131,6 +195,8 @@ class Neural(object):
         self.__reserveTranspose(streams)
         self.__reserveDLayer(streams)
         self.__reserveExtra(streams)
+        self.__reserveWeight(streams)
+        self.__reserverBias(streams)
 
         for stream in streams:
             stream.synchronize()
@@ -214,6 +280,12 @@ class Neural(object):
     
     def __transpose(self, z, derror, buffer=None):
         return self.__swapper(z, derror, buffer=buffer, GPURunner=transpose, CPURunner=transposeDot_cpu)
+    
+    def __copyArr(self, arr, input):
+        return self.__swapper(arr, input, buffer=arr, GPURunner=copy, CPURunner=copy_cpu)
+    
+    def __stochastic_gradient_descent(self, gradients, buffer=None):
+        return self.__swapper(gradients, buffer=buffer, GPURunner=sgd, CPURunner=sgd_cpu)
 
     def __feedForward(self, x):
         t = timer()
@@ -235,56 +307,74 @@ class Neural(object):
         self.__logger("feedForward", t)
         return y
 
-    def __backPropagation(self, x, target):
+    def __backPropagation(self):
         t = timer()
 
         # feedForward
-        z = [x] # save all Zs
-        activations = [] # save all activations
-
         activation_pointer = 1
         layer_pointer = 0
+        residual_pointer = 1
 
         for w, b in zip(self.__weights, self.__biases):
             x = self.__layer(x, w, b, buffer=self.__getReserve('layer', layer_pointer))
             layer_pointer += 1
 
-            activations.append(x)
+            self.__copyArr(self.__residual[residual_pointer], x)
+            residual_pointer += 1
+            
             x = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
             activation_pointer += 1
 
-            z.append(x)
+            self.__copyArr(self.__residual[residual_pointer], x)
+            residual_pointer += 1
 
         y = self.__selector(x, buffer=self.__getReserve('selector', 0))
+        self.__copyArr(self.__residual[residual_pointer], y)
+        residual_pointer += 1
 
-        derror = self.__d_loss(y, target, buffer=self.__getReserve('d_loss', 0))
-
-        derror = self.__d_selector(z[self.__num_layers - 1], derror, buffer=self.__getReserve('d_selector', 0))
+        # backpropagation
+        residual_pointer -= 1
+        derror = self.__d_loss(self.__residual[residual_pointer], self.__target, buffer=self.__getReserve('d_loss', 0))
+        
+        residual_pointer -= 1
+        derror = self.__d_selector(self.__residual[residual_pointer], derror, buffer=self.__getReserve('d_selector', 0))
 
         d_activation_pointer = 0
         d_layer_pointer = 0
         transpose_pointer = 0
+        update_pointer = 0
 
         for l in range(1, self.__num_layers):
             w = self.__weights[-l]
             b = self.__biases[-l]
 
-            derror = self.__d_activation(activations[-l], derror, buffer=self.__getReserve('d_activation', d_activation_pointer))
+            residual_pointer -= 1
+            derror = self.__d_activation(self.__residual[residual_pointer], derror, buffer=self.__getReserve('d_activation', d_activation_pointer))
 
             d_activation_pointer += 1
             
-            nabla_w = self.__transpose(z[-l-1], derror, buffer=self.__getReserve('transpose', transpose_pointer))
+            residual_pointer -= 1
+            nabla_w = self.__transpose(self.__residual[residual_pointer], derror, buffer=self.__getReserve('transpose', transpose_pointer))
             transpose_pointer += 1
 
             nabla_b = derror # error for each bias
 
-            derror =  self.__d_layer(z[-l-1], w, derror, buffer=self.__getReserve('d_layer', d_layer_pointer))
+            # using the same residual pointer of transpose!
+            derror =  self.__d_layer(self.__residual[residual_pointer], w, derror, buffer=self.__getReserve('d_layer', d_layer_pointer))
 
             d_layer_pointer += 1
 
-            self.__weights[-l] = self.__updateWeight(self.__weights[-l], self.__eta, nabla_w)
+            self.__weights[-l] = self.__updateWeight(
+                self.__weights[-l], 
+                self.__eta, 
+                self.__stochastic_gradient_descent(nabla_w, buffer=self.__getReserve('weight', update_pointer)))
 
-            self.__biases[-l] = self.__updateWeight(self.__biases[-l], self.__eta, nabla_b)
+            self.__biases[-l] = self.__updateWeight(
+                self.__biases[-l], 
+                self.__eta, 
+                self.__stochastic_gradient_descent(nabla_b, buffer=self.__getReserve('bias', update_pointer)))
+            
+            update_pointer += 1
 
         t = timer() - t
         prefix = '[GPU] ' if self.__gpuMode else '[CPU] '
@@ -294,6 +384,38 @@ class Neural(object):
         if self.__gpuMode:
             return cuda.to_device(x)
         return x
+    
+    def __insertIntoBatch(self, x, y):
+        if 'input' not in self.__tmp.keys():
+            self.__tmp['input'] = []
+        
+        if 'target' not in self.__tmp.keys():
+            self.__tmp['target'] = []
+        
+        self.__tmp['input'].append(x)
+        self.__tmp['target'].append(y)
+
+        self.__fill += 1
+        
+        if self.__fill < self.__mini_batch:
+            return None
+        
+        input = np.array(self.__tmp['input'])
+        target = np.array(self.__tmp['target'])
+        
+        input = self.__buildMsg(input)
+        target = self.__buildMsg(target)
+        
+        input = self.__activation(input, buffer=self.__getReserve('activation', 0))
+        
+        self.__copyArr(self.__residual[0], input)
+        self.__copyArr(self.__target, target)
+        
+        self.__backPropagation()
+        self.__fill = 0
+        
+        self.__tmp['input'] = []
+        self.__tmp['target'] = []
 
     def send(self, l):
         t = timer()
@@ -312,14 +434,15 @@ class Neural(object):
     def learn(self, x, y):
         t = timer()
 
-        x = self.__activation(self.__buildMsg(np.array([x])), buffer=self.__getReserve('activation', 0))
-        y = self.__buildMsg(np.array([y]))
-
-        self.__backPropagation(x, y)
+        x = np.array([x])
+        y = np.array([y])
+        
+        self.__insertIntoBatch(x, y)
 
         t = timer() - t
         self.__logger("learn", t)
 
+    @DeprecationWarning
     def cost(self, x, y):
         t = timer()
 

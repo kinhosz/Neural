@@ -8,4 +8,6 @@ from .loss import loss
 from .selector import selector
 from .transpose import transpose
 from .updateWeights import updateWeight
+from .copy import copy
+from .sthocastic_gradient_descent import sgd
 from .vars import get, reset
