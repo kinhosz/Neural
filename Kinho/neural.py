@@ -294,9 +294,6 @@ class Neural(object):
     def __transpose(self, z, derror, buffer=None):
         return self.__swapper(z, derror, buffer=buffer, GPURunner=transpose, CPURunner=transposeDot_cpu)
     
-    def __copyArr(self, arr, input):
-        return self.__swapper(arr, input, buffer=arr, GPURunner=copy, CPURunner=copy_cpu)
-    
     def __stochastic_gradient_descent(self, gradients, buffer=None):
         return self.__swapper(gradients, buffer=buffer, GPURunner=sgd, CPURunner=sgd_cpu)
 
@@ -331,12 +328,10 @@ class Neural(object):
         residual_pointer = 1
 
         for w, b in zip(self.__weights, self.__biases):
-            # implement batch
             x = self.__layer(x, w, b, buffer=self.__getReserve('layer', layer_pointer))
             layer_pointer += 1
 
-            # implement batch
-            self.__copyArr(self.__residual[residual_pointer], x)
+            self.__residual[residual_pointer] = x
             residual_pointer += 1
             
             # implement batch
