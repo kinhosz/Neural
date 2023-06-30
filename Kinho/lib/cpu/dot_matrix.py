@@ -1,8 +1,8 @@
 import numpy as np
 
 def dot_matrix(
-    signals: np.array, weight: np.array, bias: np.array, *_args, **_kwargs
-) -> np.array:
+    signals: np.ndarray, weight: np.ndarray, bias: np.ndarray, *_args, **_kwargs
+) -> np.ndarray:
     """
     Args:
         signals (np.array): the batch input for network -> shape(minibatch, 1, dim)
