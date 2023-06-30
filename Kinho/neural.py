@@ -5,6 +5,7 @@ from colorama import Fore, init
 from .kernel import *
 from .transfer import loadTo
 from .brain import Wrapper, Builder
+from .lib import cpu, gpu
 
 init()
 MINIMUMBLOCKSIZE = 28
@@ -269,8 +270,16 @@ class Neural(object):
     def __d_activation(self, z, alpha, buffer=None):
         return self.__swapper(z, alpha, buffer=buffer, GPURunner=dactivation, CPURunner=sigmoid2_derivate_cpu)
     
-    def __layer(self, x, w, b, buffer=None):
-        return self.__swapper(x, w, b, buffer=buffer, GPURunner=layer, CPURunner=dotMatrix_cpu)
+    # implement batch
+    def __layer(self, signals, weight, biase, buffer=None):
+        #return self.__swapper(x, w, b, buffer=buffer, GPURunner=layer, CPURunner=cpu.dot_matrix)
+        ret = None
+        if self.__gpuMode:
+            ret = gpu.dot_matrix(signals=signals, weight=weight, bias=biase, buffer=buffer)
+        else:
+            ret = cpu.dot_matrix(signals=signals, weight=weight, bias=biase)
+        
+        return ret
 
     def __d_layer(self, _, w, alpha, buffer=None):
         return self.__swapper(w, alpha, buffer=buffer, GPURunner=dlayer, CPURunner=dotMatrix_derivate_cpu)

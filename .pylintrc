@@ -1,0 +1,3 @@
+[pylint.messages control]
+disable=C0114
+disable=C0116

@@ -1,5 +1,11 @@
 import numpy as np
 
+'''
+BATCH FORMAT:
+
+arr[MINIBATCH][...]
+'''
+
 def mse_cpu(predicted, target): 
 	error = np.sum(np.square(predicted - target))/2.0
 	return error
@@ -25,9 +31,6 @@ def sigmoid2_cpu(z):
 
 def sigmoid2_derivate_cpu(z, alpha):
     return alpha*(2.0*np.exp(-z)/((1.0 + np.exp(-z))*(1.0 + np.exp(-z))))
-
-def dotMatrix_cpu(x, w, b):
-	return x.dot(w) + b
 
 def dotMatrix_derivate_cpu(w, alpha):
 	return alpha.dot(w.transpose())
