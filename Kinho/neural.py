@@ -196,7 +196,7 @@ class Neural(object):
         self.__reserveDLayer(streams)
         self.__reserveExtra(streams)
         self.__reserveWeight(streams)
-        self.__reserverBias(streams)
+        self.__reserveBias(streams)
 
         for stream in streams:
             stream.synchronize()
@@ -231,7 +231,7 @@ class Neural(object):
         dbg = True if GPURunner.__name__ == 'transpose' else False
 
         if self.__gpuMode == False:
-            arr = CPURunner(*args)
+            arr = CPURunner(*args, minibatch=self.__mini_batch)
         else:
             mapped_args = []
             for arg in args:
@@ -244,7 +244,7 @@ class Neural(object):
                     print("register")
                     assert False
 
-            arr = GPURunner(*mapped_args, buffer)
+            arr = GPURunner(*mapped_args, buffer, minibatch=self.__mini_batch)
 
         t = timer() - t
         self.__logger(name, t, dbg=False)
@@ -311,32 +311,42 @@ class Neural(object):
         t = timer()
 
         # feedForward
+        x = self.__residual[0]
+
         activation_pointer = 1
         layer_pointer = 0
         residual_pointer = 1
 
         for w, b in zip(self.__weights, self.__biases):
+            # implement batch
             x = self.__layer(x, w, b, buffer=self.__getReserve('layer', layer_pointer))
             layer_pointer += 1
 
+            # implement batch
             self.__copyArr(self.__residual[residual_pointer], x)
             residual_pointer += 1
             
+            # implement batch
             x = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
             activation_pointer += 1
 
+            # implement batch
             self.__copyArr(self.__residual[residual_pointer], x)
             residual_pointer += 1
 
+        # implement batch
         y = self.__selector(x, buffer=self.__getReserve('selector', 0))
+        # implement batch
         self.__copyArr(self.__residual[residual_pointer], y)
         residual_pointer += 1
 
         # backpropagation
         residual_pointer -= 1
+        # implement batch
         derror = self.__d_loss(self.__residual[residual_pointer], self.__target, buffer=self.__getReserve('d_loss', 0))
         
         residual_pointer -= 1
+        # implement batch
         derror = self.__d_selector(self.__residual[residual_pointer], derror, buffer=self.__getReserve('d_selector', 0))
 
         d_activation_pointer = 0
@@ -349,29 +359,36 @@ class Neural(object):
             b = self.__biases[-l]
 
             residual_pointer -= 1
+            # implement batch
             derror = self.__d_activation(self.__residual[residual_pointer], derror, buffer=self.__getReserve('d_activation', d_activation_pointer))
 
             d_activation_pointer += 1
             
             residual_pointer -= 1
+            # implement batch
             nabla_w = self.__transpose(self.__residual[residual_pointer], derror, buffer=self.__getReserve('transpose', transpose_pointer))
             transpose_pointer += 1
 
             nabla_b = derror # error for each bias
 
             # using the same residual pointer of transpose!
+            # implement batch
             derror =  self.__d_layer(self.__residual[residual_pointer], w, derror, buffer=self.__getReserve('d_layer', d_layer_pointer))
 
             d_layer_pointer += 1
 
+            # implement batch
             self.__weights[-l] = self.__updateWeight(
                 self.__weights[-l], 
                 self.__eta, 
+                # implement batch
                 self.__stochastic_gradient_descent(nabla_w, buffer=self.__getReserve('weight', update_pointer)))
 
+            # implement batch
             self.__biases[-l] = self.__updateWeight(
                 self.__biases[-l], 
                 self.__eta, 
+                # implement batch
                 self.__stochastic_gradient_descent(nabla_b, buffer=self.__getReserve('bias', update_pointer)))
             
             update_pointer += 1
