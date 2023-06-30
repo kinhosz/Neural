@@ -1,5 +1,4 @@
 from numba import cuda
-from ..lib.GPU import *
 from ..transfer.loader import loadTo
 
 # implement batch

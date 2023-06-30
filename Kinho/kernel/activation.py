@@ -1,5 +1,4 @@
 from numba import cuda
-from ..lib.GPU import *
 from timeit import default_timer as timer
 from .vars import add
 from ..transfer.loader import loadTo

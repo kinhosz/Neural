@@ -1,5 +1,4 @@
 import numpy as np
-from .lib.GPU import *
 from timeit import default_timer as timer
 from colorama import Fore, init
 from .kernel import *
