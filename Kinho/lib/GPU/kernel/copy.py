@@ -8,12 +8,13 @@ THREADSPERBLOCK = (32, 32)
 def perform(buffer: DeviceNDArray, const_host: DeviceNDArray):
     batch_id, y_col = cuda.grid(2)
     
-    sH = cuda.shared.array(shape=(THREADSPERBLOCK[1], ), dtype=float64)
+    sH = cuda.shared.array(shape=(THREADSPERBLOCK[1],), dtype=float64)
     
+    tx = cuda.threadIdx.x
     ty = cuda.threadIdx.y
     
-    if batch_id == 0:
-        sH[ty] = const_host[{0, y_col}]
+    if tx == 0:
+        sH[ty] = const_host[0, y_col]
     
     if batch_id >= buffer.shape[0] or \
         y_col >= const_host.shape[1]:
@@ -21,7 +22,7 @@ def perform(buffer: DeviceNDArray, const_host: DeviceNDArray):
     
     cuda.syncthreads()
     
-    buffer[{batch_id, 0, y_col}] = sH[ty]    
+    buffer[batch_id, 0, y_col] = sH[ty]
 
 def copy(buffer: DeviceNDArray, const_host: DeviceNDArray):
     """Perform: buffer[batch_id] = const_host

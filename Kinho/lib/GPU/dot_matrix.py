@@ -7,6 +7,17 @@ def dot_matrix(
     bias: DeviceNDArray,
     buffer: DeviceNDArray,
 ):
+    """buffer[batch_id] = signails[batch_id] * weight + bias
+
+    Args:
+        signals (DeviceNDArray): [batch_id][1][N]
+        weight (DeviceNDArray): [N][M]
+        bias (DeviceNDArray): [1][M]
+        buffer (DeviceNDArray): [batch_id][1][M]
+
+    Returns:
+        buffer
+    """
     copy(buffer, bias)
     multiplication(buffer=buffer, const_a=signals, const_b=weight)
 
