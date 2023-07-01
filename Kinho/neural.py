@@ -267,8 +267,15 @@ class Neural(object):
     def __d_selector(self, z, alpha, buffer=None):
         return self.__swapper(z, alpha, buffer=buffer, GPURunner=dselector, CPURunner=softmax_derivate_cpu)
 
-    def __activation(self, z, buffer=None):
-       return self.__swapper(z, buffer=buffer, GPURunner=activation, CPURunner=sigmoid2_cpu)
+    def __activation(self, 
+                     signals: DATASTREAM, 
+                     buffer: DeviceNDArray =None
+        ) -> DATASTREAM:
+
+        if self.__gpuMode:
+            return gpu.sigmoid2(signals=signals, buffer=buffer)
+        else:
+            return cpu.sigmoid2(signals=signals)
 
     def __d_activation(self, z, alpha, buffer=None):
         return self.__swapper(z, alpha, buffer=buffer, GPURunner=dactivation, CPURunner=sigmoid2_derivate_cpu)
@@ -277,7 +284,7 @@ class Neural(object):
                 signals: DATASTREAM, 
                 weight: DATASTREAM, 
                 biase: DATASTREAM, 
-                buffer: DATASTREAM = None
+                buffer: DeviceNDArray = None
         ) -> DATASTREAM:
 
         if self.__gpuMode:
@@ -333,8 +340,7 @@ class Neural(object):
 
             self.__residual[residual_pointer] = x
             residual_pointer += 1
-            
-            # implement batch
+
             x = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
             activation_pointer += 1
 
