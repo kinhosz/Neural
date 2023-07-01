@@ -344,14 +344,13 @@ class Neural(object):
             x = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
             activation_pointer += 1
 
-            # implement batch
-            self.__copyArr(self.__residual[residual_pointer], x)
+            self.__residual[residual_pointer] = x
             residual_pointer += 1
 
         # implement batch
         y = self.__selector(x, buffer=self.__getReserve('selector', 0))
-        # implement batch
-        self.__copyArr(self.__residual[residual_pointer], y)
+
+        self.__residual[residual_pointer] = y
         residual_pointer += 1
 
         # backpropagation
