@@ -258,8 +258,15 @@ class Neural(object):
     def __loss(self, predicted, target, buffer=None):
         return self.__swapper(predicted, target, buffer=buffer, GPURunner=loss, CPURunner=mse_cpu)
 
-    def __d_loss(self, predicted, target, buffer=None):
-        return self.__swapper(predicted, target, buffer=buffer, GPURunner=dloss, CPURunner=mse_derivate_cpu)
+    def __d_loss(self, 
+                 predicts: DATASTREAM, 
+                 targets: DATASTREAM, 
+                 buffer: DeviceNDArray = None):
+        
+        if self.__gpuMode:
+            return gpu.mse_derivate(predicts=predicts, targets=targets, buffer=buffer)
+        else:
+            return cpu.mse_derivate(predicts=predicts, targets=targets)
 
     def __selector(self, 
                    signals: DATASTREAM, 
@@ -361,7 +368,6 @@ class Neural(object):
 
         # backpropagation
         residual_pointer -= 1
-        # implement batch
         derror = self.__d_loss(self.__residual[residual_pointer], self.__target, buffer=self.__getReserve('d_loss', 0))
         
         residual_pointer -= 1
