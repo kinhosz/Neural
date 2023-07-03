@@ -261,8 +261,15 @@ class Neural(object):
     def __d_loss(self, predicted, target, buffer=None):
         return self.__swapper(predicted, target, buffer=buffer, GPURunner=dloss, CPURunner=mse_derivate_cpu)
 
-    def __selector(self, z, buffer=None):
-        return self.__swapper(z, self.__getReserve('extra', 0), buffer=buffer, GPURunner=selector, CPURunner=softmax_cpu)
+    def __selector(self, 
+                   signals: DATASTREAM, 
+                   buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.softmax(signals=signals, extra=self.__getReserve('extra', 0), buffer=buffer)
+        else:
+            return cpu.softmax(signals=signals)
 
     def __d_selector(self, z, alpha, buffer=None):
         return self.__swapper(z, alpha, buffer=buffer, GPURunner=dselector, CPURunner=softmax_derivate_cpu)
@@ -347,7 +354,6 @@ class Neural(object):
             self.__residual[residual_pointer] = x
             residual_pointer += 1
 
-        # implement batch
         y = self.__selector(x, buffer=self.__getReserve('selector', 0))
 
         self.__residual[residual_pointer] = y
