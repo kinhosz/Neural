@@ -1,5 +1,5 @@
 from numba.cuda.cudadrv.devicearray import DeviceNDArray
-from .kernel import multiplication, copy
+from .kernel import matrix_multiplication, copy
 
 def dot_matrix(
     signals: DeviceNDArray,
@@ -19,6 +19,6 @@ def dot_matrix(
         buffer
     """
     copy(buffer, bias)
-    multiplication(buffer=buffer, const_a=signals, const_b=weight)
+    matrix_multiplication(buffer=buffer, const_a=signals, const_b=weight)
 
     return buffer

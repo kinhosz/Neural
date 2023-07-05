@@ -43,7 +43,7 @@ def perform(buffer: DeviceNDArray, const_a: DeviceNDArray, const_b: DeviceNDArra
     
     cuda.atomic.add(buffer, (batch_id, 0, z_col), tmp[tx, 0, tz])
 
-def multiplication(buffer: DeviceNDArray, const_a: DeviceNDArray, const_b: DeviceNDArray) -> None:
+def matrix_multiplication(buffer: DeviceNDArray, const_a: DeviceNDArray, const_b: DeviceNDArray) -> None:
     """ Perform buffer[batch_id] = const_a[batch_id] * const_b
 
     Args:
