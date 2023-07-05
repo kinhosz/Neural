@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from timeit import default_timer as timer
 from colorama import Fore, init
 from .kernel import *
@@ -7,6 +8,7 @@ from .brain import Wrapper, Builder
 from .lib import cpu, gpu
 from numba.cuda.cudadrv.devicearray import DeviceNDArray
 from typing import Union
+from .lib.GPU_deprecated import *
 
 DATASTREAM = Union[DeviceNDArray, np.ndarray]
 
@@ -456,8 +458,8 @@ class Neural(object):
         
         input = self.__activation(input, buffer=self.__getReserve('activation', 0))
         
-        self.__copyArr(self.__residual[0], input)
-        self.__copyArr(self.__target, target)
+        self.__residual[0] = input
+        self.__target = target
         
         self.__backPropagation()
         self.__fill = 0
