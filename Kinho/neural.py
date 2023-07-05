@@ -300,8 +300,15 @@ class Neural(object):
         else:
             return cpu.sigmoid2(signals=signals)
 
-    def __d_activation(self, z, alpha, buffer=None):
-        return self.__swapper(z, alpha, buffer=buffer, GPURunner=dactivation, CPURunner=sigmoid2_derivate_cpu)
+    def __d_activation(self, 
+                       signals: DATASTREAM, 
+                       alphas: DATASTREAM, 
+                       buffer: DeviceNDArray = None):
+        
+        if self.__gpuMode:
+            return gpu.sigmoid2_derivate(signals=signals, alphas=alphas, buffer=buffer)
+        else:
+            return cpu.sigmoid2_derivate(signals=signals, alphas=alphas)
     
     def __layer(self, 
                 signals: DATASTREAM, 
@@ -392,7 +399,6 @@ class Neural(object):
             b = self.__biases[-l]
 
             residual_pointer -= 1
-            # implement batch
             derror = self.__d_activation(self.__residual[residual_pointer], derror, buffer=self.__getReserve('d_activation', d_activation_pointer))
 
             d_activation_pointer += 1
