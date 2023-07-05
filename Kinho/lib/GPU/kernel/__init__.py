@@ -9,3 +9,4 @@ from .mse_derivate import mse_derivate
 from .softmax_derivate import softmax_derivate
 from .list_multiplication import list_multiplication
 from .sigmoid_0_1_derivate import sigmoid_0_1_derivate
+from .transpose_dot import transpose_dot

@@ -263,7 +263,8 @@ class Neural(object):
     def __d_loss(self, 
                  predicts: DATASTREAM, 
                  targets: DATASTREAM, 
-                 buffer: DeviceNDArray = None):
+                 buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
         
         if self.__gpuMode:
             return gpu.mse_derivate(predicts=predicts, targets=targets, buffer=buffer)
@@ -283,7 +284,8 @@ class Neural(object):
     def __d_selector(self, 
                      signals: DATASTREAM, 
                      alphas: DATASTREAM, 
-                     buffer: DeviceNDArray = None):
+                     buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
         
         if self.__gpuMode:
             return gpu.softmax_derivate(signals=signals, alphas=alphas, extra=self.__getReserve('extra', 0), buffer=buffer)
@@ -303,7 +305,8 @@ class Neural(object):
     def __d_activation(self, 
                        signals: DATASTREAM, 
                        alphas: DATASTREAM, 
-                       buffer: DeviceNDArray = None):
+                       buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
         
         if self.__gpuMode:
             return gpu.sigmoid2_derivate(signals=signals, alphas=alphas, buffer=buffer)
@@ -328,8 +331,16 @@ class Neural(object):
     def __updateWeight(self, weights, eta, nabla_w, buffer=None):
         return self.__swapper(weights, eta, nabla_w, buffer=buffer, GPURunner=updateWeight, CPURunner=updateWeights_cpu)
     
-    def __transpose(self, z, derror, buffer=None):
-        return self.__swapper(z, derror, buffer=buffer, GPURunner=transpose, CPURunner=transposeDot_cpu)
+    def __transpose(self, 
+                    signals: DATASTREAM, 
+                    alphas: DATASTREAM, 
+                    buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.transpose(signals=signals, alphas=alphas, buffer=buffer)
+        else:
+            return cpu.transpose(signals=signals, alphas=alphas)
     
     def __stochastic_gradient_descent(self, gradients, buffer=None):
         return self.__swapper(gradients, buffer=buffer, GPURunner=sgd, CPURunner=sgd_cpu)
@@ -404,7 +415,6 @@ class Neural(object):
             d_activation_pointer += 1
             
             residual_pointer -= 1
-            # implement batch
             nabla_w = self.__transpose(self.__residual[residual_pointer], derror, buffer=self.__getReserve('transpose', transpose_pointer))
             transpose_pointer += 1
 
