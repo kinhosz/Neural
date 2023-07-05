@@ -278,8 +278,15 @@ class Neural(object):
         else:
             return cpu.softmax(signals=signals)
 
-    def __d_selector(self, z, alpha, buffer=None):
-        return self.__swapper(z, alpha, buffer=buffer, GPURunner=dselector, CPURunner=softmax_derivate_cpu)
+    def __d_selector(self, 
+                     signals: DATASTREAM, 
+                     alphas: DATASTREAM, 
+                     buffer: DeviceNDArray = None):
+        
+        if self.__gpuMode:
+            return gpu.softmax_derivate(signals=signals, alphas=alphas, extra=self.__getReserve('extra', 0), buffer=buffer)
+        else:
+            return cpu.softmax_derivate(signals=signals, alphas=alphas)
 
     def __activation(self, 
                      signals: DATASTREAM, 
@@ -371,7 +378,6 @@ class Neural(object):
         derror = self.__d_loss(self.__residual[residual_pointer], self.__target, buffer=self.__getReserve('d_loss', 0))
         
         residual_pointer -= 1
-        # implement batch
         derror = self.__d_selector(self.__residual[residual_pointer], derror, buffer=self.__getReserve('d_selector', 0))
 
         d_activation_pointer = 0
