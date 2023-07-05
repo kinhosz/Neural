@@ -325,8 +325,16 @@ class Neural(object):
         else:
             return cpu.dot_matrix(signals=signals, weight=weight, bias=biase)
 
-    def __d_layer(self, _, w, alpha, buffer=None):
-        return self.__swapper(w, alpha, buffer=buffer, GPURunner=dlayer, CPURunner=dotMatrix_derivate_cpu)
+    def __d_layer(self, 
+                  const_weight: DATASTREAM, 
+                  alphas: DATASTREAM, 
+                  buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.dot_matrix_derivate(const_matrix=const_weight, alphas=alphas, buffer=buffer)
+        else:
+            return cpu.dot_matrix_derivate(const_matrix=const_weight, alphas=alphas)
     
     def __updateWeight(self, weights, eta, nabla_w, buffer=None):
         return self.__swapper(weights, eta, nabla_w, buffer=buffer, GPURunner=updateWeight, CPURunner=updateWeights_cpu)
@@ -420,9 +428,7 @@ class Neural(object):
 
             nabla_b = derror # error for each bias
 
-            # using the same residual pointer of transpose!
-            # implement batch
-            derror =  self.__d_layer(self.__residual[residual_pointer], w, derror, buffer=self.__getReserve('d_layer', d_layer_pointer))
+            derror =  self.__d_layer(w, derror, buffer=self.__getReserve('d_layer', d_layer_pointer))
 
             d_layer_pointer += 1
 
