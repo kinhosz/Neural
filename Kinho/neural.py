@@ -172,6 +172,9 @@ class Neural(object):
     def __reserveBias(self, streams):
         for i in range(len(self.__biases)):
             self.__reserveArr('bias', self.__biases[-i-1].shape, streams, addMiniBatch=False)
+    
+    def __reserveCost(self, streams):
+        self.__reserveArr('cost', (1,), streams, addMiniBatch=False)
 
     def __reserveMemo(self):
         if self.__gpuMode == False:
@@ -189,6 +192,7 @@ class Neural(object):
             'extra': [],
             'weight': [],
             'bias': [],
+            'cost': [],
         }
 
         streams = []
@@ -203,6 +207,7 @@ class Neural(object):
         self.__reserveExtra(streams)
         self.__reserveWeight(streams)
         self.__reserveBias(streams)
+        self.__reserveCost(streams)
 
         for stream in streams:
             stream.synchronize()
@@ -257,8 +262,16 @@ class Neural(object):
 
         return arr
 
-    def __loss(self, predicted, target, buffer=None):
-        return self.__swapper(predicted, target, buffer=buffer, GPURunner=loss, CPURunner=mse_cpu)
+    def __loss(self, 
+               predict: DATASTREAM, 
+               target: DATASTREAM, 
+               buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.mse(predict=predict, target=target, buffer=buffer)
+        else:
+            return cpu.mse(predict=predict, target=target)
 
     def __d_loss(self, 
                  predicts: DATASTREAM, 
@@ -529,17 +542,16 @@ class Neural(object):
         t = timer() - t
         self.__logger("learn", t)
 
-    @DeprecationWarning
     def cost(self, input, output):
         x, y = input, output
         
         t = timer()
 
-        np_x = self.__buildMsg(np.array([x]))
-        np_y = self.__buildMsg(np.array([y]))
+        np_x = self.__buildMsg(np.array([[x]]))
+        np_y = self.__buildMsg(np.array([[y]]))
         np_x = self.__activation(np_x, buffer=self.__getReserve('activation', 0))
 
-        ret = self.__loss(self.__feedForward(np_x),np_y)
+        ret = self.__loss(self.__feedForward(np_x), np_y, buffer=self.__getReserve('cost', 0))
 
         t = timer() - t
         self.__logger("cost", t)

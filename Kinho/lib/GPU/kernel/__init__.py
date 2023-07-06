@@ -15,3 +15,5 @@ from .memset_arr_1 import memset_arr_1
 from .average_batch import average_batch
 from .memset_arr_2 import memset_arr_2
 from .partial_gradient import partial_gradient
+from .mse import mse
+from .memset_constant import memset_constant
