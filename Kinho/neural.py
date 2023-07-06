@@ -2,13 +2,12 @@ import numpy as np
 import math
 from timeit import default_timer as timer
 from colorama import Fore, init
-from .kernel import *
 from .transfer import loadTo
 from .brain import Wrapper, Builder
 from .lib import cpu, gpu
 from numba.cuda.cudadrv.devicearray import DeviceNDArray
+from numba import cuda
 from typing import Union
-from .lib.GPU_deprecated import *
 
 DATASTREAM = Union[DeviceNDArray, np.ndarray]
 
@@ -35,7 +34,6 @@ class Neural(object):
         self.__target = None
         self.__fill = 0
         self.__logs = {}
-        self.__mapper = {}
         self.__tmp = {}
 
         t = timer()
@@ -233,34 +231,6 @@ class Neural(object):
         
         if dbg:
             print(color + "{}: {}ms".format(method, delta))
-
-    def __swapper(self, *args, buffer, GPURunner, CPURunner):
-        arr = None
-        t = timer()
-
-        name = GPURunner.__name__
-        dbg = True if GPURunner.__name__ == 'transpose' else False
-
-        if self.__gpuMode == False:
-            arr = CPURunner(*args, minibatch=self.__mini_batch)
-        else:
-            mapped_args = []
-            for arg in args:
-                if cuda.is_cuda_array(arg):
-                    mapped_args.append(arg)
-                else:
-                    arg_dvc = cuda.to_device(arg)
-                    mapped_args.append(arg_dvc)
-                    self.__mapper[id(arg)] = arg_dvc
-                    print("register")
-                    assert False
-
-            arr = GPURunner(*mapped_args, buffer, minibatch=self.__mini_batch)
-
-        t = timer() - t
-        self.__logger(name, t, dbg=False)
-
-        return arr
 
     def __loss(self, 
                predict: DATASTREAM, 
