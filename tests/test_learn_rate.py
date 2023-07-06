@@ -26,7 +26,7 @@ def learn_rate(robot: Neural, epoch: int):
     
     hits = 0
     for input in test:
-        out = robot.send(l=input[0])
+        out = robot.send(input[0])
         if shared.greaterIdx(out) == input[1]:
             hits += 1
     

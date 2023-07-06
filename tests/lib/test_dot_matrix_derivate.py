@@ -4,7 +4,7 @@ from Kinho.lib import cpu, gpu
 
 EPS = 1e-8
 
-def test_dot_matrix_derivate():
+def test_dot_matrix_derivate_gpu():
     BATCH = 512
     DIM1 = 100
     DIM2 = 300
