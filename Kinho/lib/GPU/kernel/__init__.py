@@ -12,3 +12,5 @@ from .sigmoid_0_1_derivate import sigmoid_0_1_derivate
 from .transpose_dot import transpose_dot
 from .inverse_matrix_multiplication import inverse_matrix_multiplication
 from .memset_arr_1 import memset_arr_1
+from .average_batch import average_batch
+from .memset_arr_2 import memset_arr_2

@@ -167,11 +167,11 @@ class Neural(object):
 
     def __reserveWeight(self, streams):
         for i in range(len(self.__weights)):
-            self.__reserveArr('weight', self.__weights[-i-1].shape, streams)
+            self.__reserveArr('weight', self.__weights[-i-1].shape, streams, addMiniBatch=False)
     
     def __reserveBias(self, streams):
         for i in range(len(self.__biases)):
-            self.__reserveArr('bias', self.__biases[-i-1].shape, streams)
+            self.__reserveArr('bias', self.__biases[-i-1].shape, streams, addMiniBatch=False)
 
     def __reserveMemo(self):
         if self.__gpuMode == False:
@@ -350,8 +350,15 @@ class Neural(object):
         else:
             return cpu.transpose(signals=signals, alphas=alphas)
     
-    def __stochastic_gradient_descent(self, gradients, buffer=None):
-        return self.__swapper(gradients, buffer=buffer, GPURunner=sgd, CPURunner=sgd_cpu)
+    def __stochastic_gradient_descent(self, 
+                                      gradients: DATASTREAM, 
+                                      buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.stochastic_gradient_descent(gradients=gradients, buffer=buffer)
+        else:
+            return cpu.stochastic_gradient_descent(gradients=gradients)
 
     def __feedForward(self, x):
         t = timer()
@@ -435,15 +442,13 @@ class Neural(object):
             # implement batch
             self.__weights[-l] = self.__updateWeight(
                 self.__weights[-l], 
-                self.__eta, 
-                # implement batch
+                self.__eta,
                 self.__stochastic_gradient_descent(nabla_w, buffer=self.__getReserve('weight', update_pointer)))
 
             # implement batch
             self.__biases[-l] = self.__updateWeight(
                 self.__biases[-l], 
                 self.__eta, 
-                # implement batch
                 self.__stochastic_gradient_descent(nabla_b, buffer=self.__getReserve('bias', update_pointer)))
             
             update_pointer += 1
