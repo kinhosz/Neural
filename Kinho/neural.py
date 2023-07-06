@@ -555,7 +555,7 @@ class Neural(object):
 
         t = timer() - t
         self.__logger("cost", t)
-        return ret
+        return ret[0]
     
     def export(self, filename, path):
         layers = []
