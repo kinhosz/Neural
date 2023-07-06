@@ -1,6 +1,6 @@
 import numpy as np
 
-def partial_gradient(weigth: np.ndarray, eta: np.ndarray, gradient: np.ndarray) -> np.ndarray:
+def partial_gradient(weight: np.ndarray, eta: np.ndarray, gradient: np.ndarray) -> np.ndarray:
     """update: weight = weight - eta * gradient
 
     Args:
@@ -12,8 +12,8 @@ def partial_gradient(weigth: np.ndarray, eta: np.ndarray, gradient: np.ndarray) 
         np.ndarray: weight
     """
     
-    for i in range(weigth.shape[0]):
-        for j in range(weigth.shape[1]):
-            weigth[i, j] = weigth[i, j] - eta[0] * gradient[i, j]
+    for i in range(weight.shape[0]):
+        for j in range(weight.shape[1]):
+            weight[i, j] = weight[i, j] - eta[0] * gradient[i, j]
     
-    return weigth
+    return weight

@@ -80,7 +80,7 @@ class Neural(object):
         
         self.__residual.append(np.empty((self.__mini_batch, 1, self.__architecture[0])))
         
-        for i in range(1, len(self.__architecture) - 1):
+        for i in range(1, len(self.__architecture)):
             shape = (self.__mini_batch, 1, self.__architecture[i])
             self.__residual.append(np.empty(shape)) # after layer
             self.__residual.append(np.empty(shape)) # after activation
@@ -93,14 +93,14 @@ class Neural(object):
         if not self.__gpuMode:
             return None
         
-        residual_stream = cuda.stream()
-        target_stream = cuda.stream()
+        raw_residual = []
         
-        raw_residual = cuda.to_device(self.__residual, stream=residual_stream)
-        raw_target = cuda.to_device(self.__target, stream=target_stream)
+        for res in self.__residual:
+            raw_residual.append(
+                cuda.to_device(res)
+            )
         
-        residual_stream.synchronize()
-        target_stream.synchronize()
+        raw_target = cuda.to_device(self.__target)
         
         self.__target = raw_target
         self.__residual = raw_residual
@@ -500,21 +500,25 @@ class Neural(object):
         self.__tmp['img'] = []
         self.__tmp['target'] = []
 
-    def send(self, l):
+    def send(self, input):
+        l = input
+        
         t = timer()
 
-        x =  self.__buildMsg(np.array([l]))
+        x = self.__buildMsg(np.array([[l]]))
         arr = self.__feedForward(x)
 
         hst, = loadTo(arr, mode='CPU')
-        y = hst[0]
+        y = hst[0][0]
 
         t = timer() - t
         self.__logger("send", t)
 
         return y
 
-    def learn(self, x, y):
+    def learn(self, input, output):
+        x, y = input, output
+
         t = timer()
 
         x = np.array([x])
@@ -526,7 +530,9 @@ class Neural(object):
         self.__logger("learn", t)
 
     @DeprecationWarning
-    def cost(self, x, y):
+    def cost(self, input, output):
+        x, y = input, output
+        
         t = timer()
 
         np_x = self.__buildMsg(np.array([x]))
