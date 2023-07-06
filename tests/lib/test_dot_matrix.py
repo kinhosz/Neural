@@ -1,4 +1,4 @@
-from .. import cpu, gpu
+from Kinho.lib import cpu, gpu
 from numba import cuda
 import numpy as np
 

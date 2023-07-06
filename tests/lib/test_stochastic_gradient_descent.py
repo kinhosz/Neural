@@ -1,6 +1,6 @@
 import numpy as np
 from numba import cuda
-from .. import cpu, gpu
+from Kinho.lib import cpu, gpu
 
 EPS = 1e-8
 
