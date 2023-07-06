@@ -5,7 +5,7 @@ import random
 
 shared = Shared()
 
-LEARN_RATE = 0.6
+LEARN_RATE = 0.4
 
 def learn_rate(robot: Neural, epoch: int):
     images = shared.images()
