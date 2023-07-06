@@ -22,7 +22,7 @@ def learn_rate(robot: Neural, epoch: int):
     
     for i in range(epoch):
         for input in train:
-            robot.learn(x=input[0], y=shared.densityArr(input[1], 10))
+            robot.learn(input[0], shared.densityArr(input[1], 10))
     
     hits = 0
     for input in test:

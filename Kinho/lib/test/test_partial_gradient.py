@@ -16,7 +16,7 @@ def test_partial_gradient_gpu():
     gradient_dvc = cuda.to_device(gradient_host)
     eta_dvc = cuda.to_device(eta_host)
     
-    ret_cpu = cpu.partial_gradient(weigth=weight_host, eta=eta_host, gradient=gradient_host)
+    ret_cpu = cpu.partial_gradient(weight=weight_host, eta=eta_host, gradient=gradient_host)
     gpu.partial_gradient(weight=weight_dvc, eta=eta_dvc, gradient=gradient_dvc)
     ret_gpu = weight_dvc.copy_to_host()
     

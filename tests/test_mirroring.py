@@ -14,7 +14,7 @@ def test_mirror_cpu_gpu():
     tmp = Neural([28*28, 15, 10], eta=0.01, gpu=False)
     
     for input in zipped_data:
-        tmp.learn(x=input[0], y=shared.densityArr(input[1], 10))
+        tmp.learn(input[0], shared.densityArr(input[1], 10))
     
     tmp.export(filename='tmp_test', path='./tmp/')
     
