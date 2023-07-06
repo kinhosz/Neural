@@ -336,8 +336,16 @@ class Neural(object):
         else:
             return cpu.dot_matrix_derivate(const_matrix=const_weight, alphas=alphas)
     
-    def __updateWeight(self, weights, eta, nabla_w, buffer=None):
-        return self.__swapper(weights, eta, nabla_w, buffer=buffer, GPURunner=updateWeight, CPURunner=updateWeights_cpu)
+    def __updateWeight(self, 
+                       weight: DATASTREAM, 
+                       eta: DATASTREAM, 
+                       gradient: DATASTREAM, 
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.partial_gradient(weight=weight, eta=eta, gradient=gradient)
+        else:
+            return cpu.partial_gradient(weight=weight, eta=eta, gradient=gradient)
     
     def __transpose(self, 
                     signals: DATASTREAM, 
@@ -439,13 +447,11 @@ class Neural(object):
 
             d_layer_pointer += 1
 
-            # implement batch
             self.__weights[-l] = self.__updateWeight(
                 self.__weights[-l], 
                 self.__eta,
                 self.__stochastic_gradient_descent(nabla_w, buffer=self.__getReserve('weight', update_pointer)))
 
-            # implement batch
             self.__biases[-l] = self.__updateWeight(
                 self.__biases[-l], 
                 self.__eta, 

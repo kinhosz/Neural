@@ -7,3 +7,4 @@ from .sigmoid2_derivate import sigmoid2_derivate
 from .transpose import transpose
 from .dot_matrix_derivate import dot_matrix_derivate
 from .stochastic_gradient_descent import stochastic_gradient_descent
+from .partial_gradient import partial_gradient
