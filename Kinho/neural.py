@@ -469,13 +469,13 @@ class Neural(object):
         return x
     
     def __insertIntoBatch(self, x, y):
-        if 'input' not in self.__tmp.keys():
-            self.__tmp['input'] = []
+        if 'img' not in self.__tmp.keys():
+            self.__tmp['img'] = []
         
         if 'target' not in self.__tmp.keys():
             self.__tmp['target'] = []
         
-        self.__tmp['input'].append(x)
+        self.__tmp['img'].append(x)
         self.__tmp['target'].append(y)
 
         self.__fill += 1
@@ -483,21 +483,21 @@ class Neural(object):
         if self.__fill < self.__mini_batch:
             return None
         
-        input = np.array(self.__tmp['input'])
+        img = np.array(self.__tmp['img'])
         target = np.array(self.__tmp['target'])
         
-        input = self.__buildMsg(input)
+        img = self.__buildMsg(img)
         target = self.__buildMsg(target)
         
-        input = self.__activation(input, buffer=self.__getReserve('activation', 0))
+        img = self.__activation(img, buffer=self.__getReserve('activation', 0))
         
-        self.__residual[0] = input
+        self.__residual[0] = img
         self.__target = target
         
         self.__backPropagation()
         self.__fill = 0
         
-        self.__tmp['input'] = []
+        self.__tmp['img'] = []
         self.__tmp['target'] = []
 
     def send(self, l):
