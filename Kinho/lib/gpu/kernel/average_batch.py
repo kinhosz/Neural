@@ -8,11 +8,6 @@ THREADSPERBLOCK = (64, 1, 16)
 def perform(buffer: DeviceNDArray, gradients: DeviceNDArray):
     batch_id, y_row, z_col = cuda.grid(3)
     
-    if batch_id >= gradients.shape[0] or \
-        y_row >= gradients.shape[1] or \
-            z_col >= gradients.shape[2]:
-                return None
-    
     tx = cuda.threadIdx.x
     ty = cuda.threadIdx.y
     tz = cuda.threadIdx.z
@@ -20,11 +15,14 @@ def perform(buffer: DeviceNDArray, gradients: DeviceNDArray):
     tmp = cuda.shared.array(shape=THREADSPERBLOCK, dtype=float64)
     tmp[tx, ty, tz] = float64(0.0)
     
+    if batch_id >= gradients.shape[0] or \
+        y_row >= gradients.shape[1] or \
+            z_col >= gradients.shape[2]:
+                return None
+    
     cuda.syncthreads()
     
-    BATCH = gradients.shape[0]
-    
-    tmp[tx, ty, tz] = gradients[batch_id, y_row, z_col] / BATCH
+    tmp[tx, ty, tz] = gradients[batch_id, y_row, z_col] / gradients.shape[0]
     
     cuda.syncthreads()
     

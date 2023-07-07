@@ -14,6 +14,8 @@ DATASTREAM = Union[DeviceNDArray, np.ndarray]
 init()
 MINIMUMBLOCKSIZE = 28
 
+EPS = 1e-8
+
 def ceil(A, B):
     return (A + B - 1) // B
 
@@ -353,14 +355,16 @@ class Neural(object):
 
     def __feedForward(self, x):
         t = timer()
+        
+        arr = self.__activation(x, buffer=self.__getReserve('activation', 0))
 
-        activation_pointer = 0
+        activation_pointer = 1
         layer_pointer = 0
 
         for w, b in zip(self.__weights,self.__biases):
-            arr = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
-
             x = self.__layer(arr, w, b, buffer=self.__getReserve('layer', layer_pointer))
+
+            arr = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
 
             activation_pointer += 1
             layer_pointer += 1
@@ -519,7 +523,6 @@ class Neural(object):
 
         np_x = self.__buildMsg(np.array([[x]]))
         np_y = self.__buildMsg(np.array([[y]]))
-        np_x = self.__activation(np_x, buffer=self.__getReserve('activation', 0))
 
         ret = self.__loss(self.__feedForward(np_x), np_y, buffer=self.__getReserve('cost', 0))
 

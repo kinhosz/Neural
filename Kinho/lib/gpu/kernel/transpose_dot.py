@@ -8,17 +8,17 @@ THREADSPERBLOCKS = (1, 32, 32)
 def perform(buffer: DeviceNDArray, const_A: DeviceNDArray, const_B: DeviceNDArray):
     batch_id, y_row, z_col = cuda.grid(3)
     
-    if batch_id >= buffer.shape[0] or \
-        y_row >= buffer.shape[1] or \
-            z_col >= buffer.shape[2]:
-                return None
-    
     sA = cuda.shared.array(shape=(THREADSPERBLOCKS[0], THREADSPERBLOCKS[1]), dtype=float64)
     sB = cuda.shared.array(shape=(THREADSPERBLOCKS[0], THREADSPERBLOCKS[2]), dtype=float64)
     
     tx = cuda.threadIdx.x
     ty = cuda.threadIdx.y
     tz = cuda.threadIdx.z
+    
+    if batch_id >= buffer.shape[0] or \
+        y_row >= buffer.shape[1] or \
+            z_col >= buffer.shape[2]:
+                return None
     
     if ty == 0:
         sB[tx, tz] = const_B[batch_id, 0, z_col]
