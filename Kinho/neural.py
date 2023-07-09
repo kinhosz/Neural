@@ -1,20 +1,27 @@
 import numpy as np
-from .lib.GPU import *
+import math
 from timeit import default_timer as timer
 from colorama import Fore, init
-from .kernel import *
 from .transfer import loadTo
 from .brain import Wrapper, Builder
+from .lib import cpu, gpu
+from numba.cuda.cudadrv.devicearray import DeviceNDArray
+from numba import cuda
+from typing import Union
+
+DATASTREAM = Union[DeviceNDArray, np.ndarray]
 
 init()
 MINIMUMBLOCKSIZE = 28
+
+EPS = 1e-8
 
 def ceil(A, B):
     return (A + B - 1) // B
 
 class Neural(object):
 
-    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False):
+    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1):
         if not sizes and not brain_path:
             raise TypeError('Should set `sizes` or `brain_path` params')
         
@@ -24,11 +31,16 @@ class Neural(object):
         self.__weights = None
         self.__biases = None
         self.__gpuMode = gpu
+        self.__mini_batch = mini_batch_size
+        self.__residual = None
+        self.__target = None
+        self.__fill = 0
         self.__logs = {}
-        self.__mapper = {}
+        self.__tmp = {}
 
         t = timer()
         self.__setBrain(Builder(brain_path) if brain_path else None, sizes)
+        self.__setMiniBatchMemo()
         self.__reserveMemo()
         t = timer() - t
     
@@ -53,6 +65,45 @@ class Neural(object):
 
         cuda_weights = [cuda.to_device(weight) for weight in self.__weights]
         self.__weights = cuda_weights
+
+    def __setMiniBatchMemo(self):
+        if 2**int(math.log2(self.__mini_batch)) != self.__mini_batch:
+            raise TypeError("Mini-batch size is invalid. You can use {}".format(2**int(math.log2(self.__mini_batch))))
+        
+        layers = len(self.__weights)
+        activations = layers + 1
+        selectors = 1
+        
+        edges = layers + activations + selectors
+        
+        self.__residual = []
+        
+        self.__residual.append(np.empty((self.__mini_batch, 1, self.__architecture[0])))
+        
+        for i in range(1, len(self.__architecture)):
+            shape = (self.__mini_batch, 1, self.__architecture[i])
+            self.__residual.append(np.empty(shape)) # after layer
+            self.__residual.append(np.empty(shape)) # after activation
+        
+        shape = (self.__mini_batch, 1, self.__architecture[-1])
+        self.__residual.append(np.empty(shape)) # selector
+        
+        self.__target = np.empty((self.__mini_batch, self.__architecture[-1]))
+        
+        if not self.__gpuMode:
+            return None
+        
+        raw_residual = []
+        
+        for res in self.__residual:
+            raw_residual.append(
+                cuda.to_device(res)
+            )
+        
+        raw_target = cuda.to_device(self.__target)
+        
+        self.__target = raw_target
+        self.__residual = raw_residual
     
     def __getReserve(self, kernel, pos):
         if self.__gpuMode == False:
@@ -60,8 +111,17 @@ class Neural(object):
         
         return self.__buffer[kernel][pos]
     
-    def __reserveArr(self, module_name, shape, streams):
-        arr = cuda.device_array(shape, dtype=np.float64)
+    def __addMiniBatchOnShape(self, shape):
+        new_shape = (self.__mini_batch, ) + shape
+        return new_shape
+    
+    def __reserveArr(self, module_name, shape, streams, addMiniBatch=True):
+        new_shape = shape
+        
+        if addMiniBatch:
+            new_shape = self.__addMiniBatchOnShape(shape)
+
+        arr = cuda.device_array(new_shape, dtype=np.float64)
 
         stream = cuda.stream()
         self.__buffer[module_name].append(cuda.to_device(arr, stream=stream))
@@ -105,6 +165,17 @@ class Neural(object):
     def __reserveExtra(self, streams):
         self.__reserveArr('extra', (1, ), streams)
 
+    def __reserveWeight(self, streams):
+        for i in range(len(self.__weights)):
+            self.__reserveArr('weight', self.__weights[-i-1].shape, streams, addMiniBatch=False)
+    
+    def __reserveBias(self, streams):
+        for i in range(len(self.__biases)):
+            self.__reserveArr('bias', self.__biases[-i-1].shape, streams, addMiniBatch=False)
+    
+    def __reserveCost(self, streams):
+        self.__reserveArr('cost', (1,), streams, addMiniBatch=False)
+
     def __reserveMemo(self):
         if self.__gpuMode == False:
             return None
@@ -119,6 +190,9 @@ class Neural(object):
             'transpose': [],
             'd_layer': [],
             'extra': [],
+            'weight': [],
+            'bias': [],
+            'cost': [],
         }
 
         streams = []
@@ -131,6 +205,9 @@ class Neural(object):
         self.__reserveTranspose(streams)
         self.__reserveDLayer(streams)
         self.__reserveExtra(streams)
+        self.__reserveWeight(streams)
+        self.__reserveBias(streams)
+        self.__reserveCost(streams)
 
         for stream in streams:
             stream.synchronize()
@@ -157,74 +234,137 @@ class Neural(object):
         if dbg:
             print(color + "{}: {}ms".format(method, delta))
 
-    def __swapper(self, *args, buffer, GPURunner, CPURunner):
-        arr = None
-        t = timer()
-
-        name = GPURunner.__name__
-        dbg = True if GPURunner.__name__ == 'transpose' else False
-
-        if self.__gpuMode == False:
-            arr = CPURunner(*args)
+    def __loss(self, 
+               predict: DATASTREAM, 
+               target: DATASTREAM, 
+               buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.mse(predict=predict, target=target, buffer=buffer)
         else:
-            mapped_args = []
-            for arg in args:
-                if cuda.is_cuda_array(arg):
-                    mapped_args.append(arg)
-                else:
-                    arg_dvc = cuda.to_device(arg)
-                    mapped_args.append(arg_dvc)
-                    self.__mapper[id(arg)] = arg_dvc
-                    print("register")
-                    assert False
+            return cpu.mse(predict=predict, target=target)
 
-            arr = GPURunner(*mapped_args, buffer)
+    def __d_loss(self, 
+                 predicts: DATASTREAM, 
+                 targets: DATASTREAM, 
+                 buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.mse_derivate(predicts=predicts, targets=targets, buffer=buffer)
+        else:
+            return cpu.mse_derivate(predicts=predicts, targets=targets)
 
-        t = timer() - t
-        self.__logger(name, t, dbg=False)
+    def __selector(self, 
+                   signals: DATASTREAM, 
+                   buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.softmax(signals=signals, extra=self.__getReserve('extra', 0), buffer=buffer)
+        else:
+            return cpu.softmax(signals=signals)
 
-        return arr
+    def __d_selector(self, 
+                     signals: DATASTREAM, 
+                     alphas: DATASTREAM, 
+                     buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.softmax_derivate(signals=signals, alphas=alphas, extra=self.__getReserve('extra', 0), buffer=buffer)
+        else:
+            return cpu.softmax_derivate(signals=signals, alphas=alphas)
 
-    def __loss(self, predicted, target, buffer=None):
-        return self.__swapper(predicted, target, buffer=buffer, GPURunner=loss, CPURunner=mse_cpu)
+    def __activation(self, 
+                     signals: DATASTREAM, 
+                     buffer: DeviceNDArray =None
+        ) -> DATASTREAM:
 
-    def __d_loss(self, predicted, target, buffer=None):
-        return self.__swapper(predicted, target, buffer=buffer, GPURunner=dloss, CPURunner=mse_derivate_cpu)
+        if self.__gpuMode:
+            return gpu.sigmoid2(signals=signals, buffer=buffer)
+        else:
+            return cpu.sigmoid2(signals=signals)
 
-    def __selector(self, z, buffer=None):
-        return self.__swapper(z, self.__getReserve('extra', 0), buffer=buffer, GPURunner=selector, CPURunner=softmax_cpu)
-
-    def __d_selector(self, z, alpha, buffer=None):
-        return self.__swapper(z, alpha, buffer=buffer, GPURunner=dselector, CPURunner=softmax_derivate_cpu)
-
-    def __activation(self, z, buffer=None):
-       return self.__swapper(z, buffer=buffer, GPURunner=activation, CPURunner=sigmoid2_cpu)
-
-    def __d_activation(self, z, alpha, buffer=None):
-        return self.__swapper(z, alpha, buffer=buffer, GPURunner=dactivation, CPURunner=sigmoid2_derivate_cpu)
+    def __d_activation(self, 
+                       signals: DATASTREAM, 
+                       alphas: DATASTREAM, 
+                       buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.sigmoid2_derivate(signals=signals, alphas=alphas, buffer=buffer)
+        else:
+            return cpu.sigmoid2_derivate(signals=signals, alphas=alphas)
     
-    def __layer(self, x, w, b, buffer=None):
-        return self.__swapper(x, w, b, buffer=buffer, GPURunner=layer, CPURunner=dotMatrix_cpu)
+    def __layer(self, 
+                signals: DATASTREAM, 
+                weight: DATASTREAM, 
+                biase: DATASTREAM, 
+                buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
 
-    def __d_layer(self, _, w, alpha, buffer=None):
-        return self.__swapper(w, alpha, buffer=buffer, GPURunner=dlayer, CPURunner=dotMatrix_derivate_cpu)
+        if self.__gpuMode:
+            return gpu.dot_matrix(signals=signals, weight=weight, bias=biase, buffer=buffer)
+        else:
+            return cpu.dot_matrix(signals=signals, weight=weight, bias=biase)
+
+    def __d_layer(self, 
+                  const_weight: DATASTREAM, 
+                  alphas: DATASTREAM, 
+                  buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.dot_matrix_derivate(const_matrix=const_weight, alphas=alphas, buffer=buffer)
+        else:
+            return cpu.dot_matrix_derivate(const_matrix=const_weight, alphas=alphas)
     
-    def __updateWeight(self, weights, eta, nabla_w, buffer=None):
-        return self.__swapper(weights, eta, nabla_w, buffer=buffer, GPURunner=updateWeight, CPURunner=updateWeights_cpu)
+    def __updateWeight(self, 
+                       weight: DATASTREAM, 
+                       eta: DATASTREAM, 
+                       gradient: DATASTREAM, 
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.partial_gradient(weight=weight, eta=eta, gradient=gradient)
+        else:
+            return cpu.partial_gradient(weight=weight, eta=eta, gradient=gradient)
     
-    def __transpose(self, z, derror, buffer=None):
-        return self.__swapper(z, derror, buffer=buffer, GPURunner=transpose, CPURunner=transposeDot_cpu)
+    def __transpose(self, 
+                    signals: DATASTREAM, 
+                    alphas: DATASTREAM, 
+                    buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.transpose(signals=signals, alphas=alphas, buffer=buffer)
+        else:
+            return cpu.transpose(signals=signals, alphas=alphas)
+    
+    def __stochastic_gradient_descent(self, 
+                                      gradients: DATASTREAM, 
+                                      buffer: DeviceNDArray = None
+        ) -> DATASTREAM:
+        
+        if self.__gpuMode:
+            return gpu.stochastic_gradient_descent(gradients=gradients, buffer=buffer)
+        else:
+            return cpu.stochastic_gradient_descent(gradients=gradients)
 
     def __feedForward(self, x):
         t = timer()
+        
+        arr = self.__activation(x, buffer=self.__getReserve('activation', 0))
 
-        activation_pointer = 0
+        activation_pointer = 1
         layer_pointer = 0
 
         for w, b in zip(self.__weights,self.__biases):
-            arr = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
-
             x = self.__layer(arr, w, b, buffer=self.__getReserve('layer', layer_pointer))
+
+            arr = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
 
             activation_pointer += 1
             layer_pointer += 1
@@ -235,56 +375,76 @@ class Neural(object):
         self.__logger("feedForward", t)
         return y
 
-    def __backPropagation(self, x, target):
+    def __backPropagation(self):
         t = timer()
 
         # feedForward
-        z = [x] # save all Zs
-        activations = [] # save all activations
+        x = self.__residual[0]
 
         activation_pointer = 1
         layer_pointer = 0
+        residual_pointer = 1
 
         for w, b in zip(self.__weights, self.__biases):
             x = self.__layer(x, w, b, buffer=self.__getReserve('layer', layer_pointer))
             layer_pointer += 1
 
-            activations.append(x)
+            self.__residual[residual_pointer] = x
+            residual_pointer += 1
+
             x = self.__activation(x, buffer=self.__getReserve('activation', activation_pointer))
             activation_pointer += 1
 
-            z.append(x)
+            self.__residual[residual_pointer] = x
+            residual_pointer += 1
 
         y = self.__selector(x, buffer=self.__getReserve('selector', 0))
 
-        derror = self.__d_loss(y, target, buffer=self.__getReserve('d_loss', 0))
+        self.__residual[residual_pointer] = y
+        residual_pointer += 1
 
-        derror = self.__d_selector(z[self.__num_layers - 1], derror, buffer=self.__getReserve('d_selector', 0))
+        # backpropagation
+        residual_pointer -= 1
+        derror = self.__d_loss(self.__residual[residual_pointer], self.__target, buffer=self.__getReserve('d_loss', 0))
+        
+        residual_pointer -= 1
+        derror = self.__d_selector(self.__residual[residual_pointer], derror, buffer=self.__getReserve('d_selector', 0))
 
         d_activation_pointer = 0
         d_layer_pointer = 0
         transpose_pointer = 0
+        update_pointer = 0
 
         for l in range(1, self.__num_layers):
             w = self.__weights[-l]
             b = self.__biases[-l]
 
-            derror = self.__d_activation(activations[-l], derror, buffer=self.__getReserve('d_activation', d_activation_pointer))
+            residual_pointer -= 1
+            derror = self.__d_activation(self.__residual[residual_pointer], derror, buffer=self.__getReserve('d_activation', d_activation_pointer))
 
             d_activation_pointer += 1
             
-            nabla_w = self.__transpose(z[-l-1], derror, buffer=self.__getReserve('transpose', transpose_pointer))
+            residual_pointer -= 1
+            nabla_w = self.__transpose(self.__residual[residual_pointer], derror, buffer=self.__getReserve('transpose', transpose_pointer))
             transpose_pointer += 1
 
             nabla_b = derror # error for each bias
 
-            derror =  self.__d_layer(z[-l-1], w, derror, buffer=self.__getReserve('d_layer', d_layer_pointer))
+            derror =  self.__d_layer(w, derror, buffer=self.__getReserve('d_layer', d_layer_pointer))
 
             d_layer_pointer += 1
 
-            self.__weights[-l] = self.__updateWeight(self.__weights[-l], self.__eta, nabla_w)
+            self.__weights[-l] = self.__updateWeight(
+                self.__weights[-l], 
+                self.__eta,
+                self.__stochastic_gradient_descent(nabla_w, buffer=self.__getReserve('weight', update_pointer)))
 
-            self.__biases[-l] = self.__updateWeight(self.__biases[-l], self.__eta, nabla_b)
+            self.__biases[-l] = self.__updateWeight(
+                self.__biases[-l], 
+                self.__eta, 
+                self.__stochastic_gradient_descent(nabla_b, buffer=self.__getReserve('bias', update_pointer)))
+            
+            update_pointer += 1
 
         t = timer() - t
         prefix = '[GPU] ' if self.__gpuMode else '[CPU] '
@@ -294,44 +454,81 @@ class Neural(object):
         if self.__gpuMode:
             return cuda.to_device(x)
         return x
+    
+    def __insertIntoBatch(self, x, y):
+        if 'img' not in self.__tmp.keys():
+            self.__tmp['img'] = []
+        
+        if 'target' not in self.__tmp.keys():
+            self.__tmp['target'] = []
+        
+        self.__tmp['img'].append(x)
+        self.__tmp['target'].append(y)
 
-    def send(self, l):
+        self.__fill += 1
+        
+        if self.__fill < self.__mini_batch:
+            return None
+        
+        img = np.array(self.__tmp['img'])
+        target = np.array(self.__tmp['target'])
+        
+        img = self.__buildMsg(img)
+        target = self.__buildMsg(target)
+        
+        img = self.__activation(img, buffer=self.__getReserve('activation', 0))
+        
+        self.__residual[0] = img
+        self.__target = target
+        
+        self.__backPropagation()
+        self.__fill = 0
+        
+        self.__tmp['img'] = []
+        self.__tmp['target'] = []
+
+    def send(self, input):
+        l = input
+        
         t = timer()
 
-        x =  self.__buildMsg(np.array([l]))
+        x = self.__buildMsg(np.array([[l]]))
         arr = self.__feedForward(x)
 
         hst, = loadTo(arr, mode='CPU')
-        y = hst[0]
+        y = hst[0][0]
 
         t = timer() - t
         self.__logger("send", t)
 
         return y
 
-    def learn(self, x, y):
+    def learn(self, input, output):
+        x, y = input, output
+
         t = timer()
 
-        x = self.__activation(self.__buildMsg(np.array([x])), buffer=self.__getReserve('activation', 0))
-        y = self.__buildMsg(np.array([y]))
-
-        self.__backPropagation(x, y)
+        x = np.array([x])
+        y = np.array([y])
+        
+        self.__insertIntoBatch(x, y)
 
         t = timer() - t
         self.__logger("learn", t)
 
-    def cost(self, x, y):
+    def cost(self, input, output):
+        x, y = input, output
+        
         t = timer()
 
-        np_x = self.__buildMsg(np.array([x]))
-        np_y = self.__buildMsg(np.array([y]))
-        np_x = self.__activation(np_x, buffer=self.__getReserve('activation', 0))
+        np_x = self.__buildMsg(np.array([[x]]))
+        np_y = self.__buildMsg(np.array([[y]]))
 
-        ret = self.__loss(self.__feedForward(np_x),np_y)
+        ret = self.__loss(self.__feedForward(np_x), np_y, buffer=self.__getReserve('cost', 0))
 
         t = timer() - t
         self.__logger("cost", t)
-        return ret
+        return ret[0]
     
     def export(self, filename, path):
         layers = []

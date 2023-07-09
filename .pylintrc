@@ -1,0 +1,6 @@
+[pylint.messages control]
+disable=C0114,C0116
+
+[FORMAT]
+max-line-length = 80
+const-naming-style = ALL_CAPS

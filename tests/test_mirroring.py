@@ -4,17 +4,17 @@ import random
 
 shared = Shared()
 
-def test_mirror_cpu_gpu():
+def mirror(tmp: Neural):
     images = shared.images()
     labels = shared.labels()
     
     zipped_data = [(img, lbl) for img, lbl in zip(images, labels)]
     random.shuffle(zipped_data)
     
-    tmp = Neural([28*28, 15, 10], eta=0.01, gpu=False)
+    PARTIAL_TRAIN = int(len(zipped_data) * 0.1)
     
-    for input in zipped_data:
-        tmp.learn(x=input[0], y=shared.densityArr(input[1], 10))
+    for input in zipped_data[:PARTIAL_TRAIN]:
+        tmp.learn(input[0], shared.densityArr(input[1], 10))
     
     tmp.export(filename='tmp_test', path='./tmp/')
     
@@ -32,3 +32,11 @@ def test_mirror_cpu_gpu():
         
         for c_pred, g_pred in zip(cpu_pred, gpu_pred):
             assert abs(c_pred - g_pred) < EPS
+
+def test_mirror_learnWithGPU_gpu():
+    tmp = Neural([28*28, 15, 10], eta=0.01, gpu=True)
+    mirror(tmp)
+
+def test_mirror_learnWithCPU_gpu():
+    tmp = Neural([28*28, 15, 10], eta=0.01, gpu=False)
+    mirror(tmp)
