@@ -23,8 +23,6 @@ def stochastic_gradient_descent(gradients: np.ndarray) -> np.ndarray:
             for k in range(BATCH):
                 acm += gradients[k, i, j]
             
-            acm /= BATCH
-            
             ret[i, j] = acm
     
     return ret

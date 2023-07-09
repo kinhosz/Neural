@@ -22,7 +22,7 @@ def perform(buffer: DeviceNDArray, gradients: DeviceNDArray):
     
     cuda.syncthreads()
     
-    tmp[tx, ty, tz] = gradients[batch_id, y_row, z_col] / gradients.shape[0]
+    tmp[tx, ty, tz] = gradients[batch_id, y_row, z_col]
     
     cuda.syncthreads()
     

@@ -1,7 +1,7 @@
 import numpy as np
 
 def dot_matrix(
-    signals: np.ndarray, weight: np.ndarray, bias: np.ndarray, *_args, **_kwargs
+    signals: np.ndarray, weight: np.ndarray, bias: np.ndarray
 ) -> np.ndarray:
     """
     Args:
