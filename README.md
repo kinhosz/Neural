@@ -10,7 +10,7 @@ pip install Kinho
 
 ## Métodos:
 ```py
-def __init__(sizes=None, brain_path=None, eta=0.01, gpu=False):
+def __init__(sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1):
     pass
 
 def send(input):
@@ -33,16 +33,17 @@ def cost(input, output):
 - `brain_path(string)`: caminho de um arquivo `x.brain`, de um modelo pré-treinado que você já tenha salvo em seu diretório.
 - `eta (float)`: taxa de aprendizado. Caso não seja definida, assumimos uma taxa padrão de __0.01__.
 - `gpu (bool)`: se __True__, permite que a rede neural automaticamente mude o contexto para utilização da GPU para melhoria de performance.
+- `mini_batch_size(int)`: potência de 2. A rede processará o aprendizado em paralelo com o tamanho do mini-batch passado. Se a opção da gpu não for selecionada, a rede continuará tratando os dados com o mesmo tamanho do mini-batch, mas sem paralelização. O tamanho do mini-batch depende da memória disponível, um tamanho de 128 costuma ser melhor.
 
 Exemplo:
 ```py
 from Kinho import Neural
 
-net_without_imported_model = Neural(sizes=[10, 200, 300, 50, 5], eta=0.1, gpu=True)
+net_without_imported_model = Neural(sizes=[10, 200, 300, 50, 5], eta=0.1, gpu=True, mini_batch_size=16)
 '''
     Uma rede com 3 camadas ocultas (200, 300, 50). Uma camada de input com 10 entradas e,
     uma camada de output com 5 saídas. Taxa de aprendizado 0.1 e todos os pesos sinápticos
-    aleatórios.
+    aleatórios, com um mini-batch de tamanho 16. 
 '''
 
 net_with_imported_model = Neural(brain_path='./pre-trained/mnist_model.brain', eta=0.1, gpu=True)
