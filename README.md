@@ -1,14 +1,14 @@
-# Rede Neural V2
-Classe para uma rede neural feedforward com uma camada de entrada, camadas ocultas e uma camada de saída.
+# Neural Network
+Class for a feedforward neural network with an input layer, hidden layers, and an output layer.
 
-A rede é chamada `Neural`, uma `CNN` que você pode importar do package `Kinho`.
+The network is called `Neural`, a `CNN` that you can import from the `Kinho` package.
 
-## Como instalar
+## How to install
 ```
 pip install Kinho
 ```
 
-## Métodos:
+## Methods:
 ```py
 def __init__(sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1):
     pass
@@ -28,100 +28,100 @@ def cost(input, output):
 
 ### Neural (constructor)
 
-#### Parâmetros:
-- `sizes (list of floats)`: lista com o número de neurônios em cada camada da rede, onde o primeiro elemento da lista é a quantidade de neurônios na camada de entrada, o último é a quantidade de neurônios na camada de saída e os elementos intermediários são as quantidades de neurônios nas camadas ocultas.
-- `brain_path(string)`: caminho de um arquivo `x.brain`, de um modelo pré-treinado que você já tenha salvo em seu diretório.
-- `eta (float)`: taxa de aprendizado. Caso não seja definida, assumimos uma taxa padrão de __0.01__.
-- `gpu (bool)`: se __True__, permite que a rede neural automaticamente mude o contexto para utilização da GPU para melhoria de performance.
-- `mini_batch_size(int)`: potência de 2. A rede processará o aprendizado em paralelo com o tamanho do mini-batch passado. Se a opção da gpu não for selecionada, a rede continuará tratando os dados com o mesmo tamanho do mini-batch, mas sem paralelização. O tamanho do mini-batch depende da memória disponível, um tamanho de 128 costuma ser melhor.
+#### Parameters:
+- `sizes (list of floats)`: a list with the number of neurons in each layer of the network, where the first element in the list is the number of neurons in the input layer, the last is the number of neurons in the output layer, and the intermediate elements are the quantities of neurons in the hidden layers.
+- `brain_path(string)`: the path to an x.brain file, a pre-trained model that you may have already saved in your directory.
+- `eta (float)`: learning rate. If not defined, we assume a default rate of 0.01.
+- `gpu (bool)`: if **True**, allows the neural network to automatically switch the context for GPU usage to improve performance.
+- `mini_batch_size(int)`: power of 2. The network will process learning in parallel with the mini-batch size passed. If the GPU option is not selected, the network will continue to process data with the same mini-batch size but without parallelization. The size of the mini-batch depends on available memory, a size of 128 is usually better.
 
-Exemplo:
+Example:
 ```py
 from Kinho import Neural
 
 net_without_imported_model = Neural(sizes=[10, 200, 300, 50, 5], eta=0.1, gpu=True, mini_batch_size=16)
 '''
-    Uma rede com 3 camadas ocultas (200, 300, 50). Uma camada de input com 10 entradas e,
-    uma camada de output com 5 saídas. Taxa de aprendizado 0.1 e todos os pesos sinápticos
-    aleatórios, com um mini-batch de tamanho 16. 
+    A network with 3 hidden layers (200, 300, 50). An input layer with 10 inputs and,
+    an output layer with 5 outputs. Learning rate 0.1, and all synaptic weights
+    randomized, with a mini-batch of size 16. 
 '''
 
 net_with_imported_model = Neural(brain_path='./pre-trained/mnist_model.brain', eta=0.1, gpu=True)
 '''
-    Uma rede com a arquitetura e todos os pesos e biases importados de um modelo previamente treinado dentro do caminho <brain_path>.
+    A network with the architecture and all weights and biases imported from a previously trained model inside the <brain_path>.
 '''
 
 invalid_network = Neural(eta=0.1, gpu=True)
 '''
-    Um erro será gerado, pois é necessária a presença da arquitetura (sizes) ou modelo pré-treinado (brain_path).
+    An error will be generated because the presence of the architecture (sizes) or pre-trained model (brain_path) is required.
 '''
 ```
 
-É __obrigatório__ passar o `sizes` ou o `brain_path`, caso contrário, um erro de tipo será gerado. Caso o usuário passe os dois, a rede irá priorizar o modelo importado, ou seja, o `brain_path`.
+It is __mandatory__ to pass sizes or brain_path; otherwise, a type error will be generated. If the user passes both, the network will prioritize the imported model, i.e., the `brain_path`.
 
 ### send
 
-#### Parâmetros:
-- `input (list of floats)`: Os valores de entrada que serão enviados para a rede.
+#### Parameters:
+- `input (list of floats)`: The input values to be sent to the network.
 
-#### Retorno:
-`list[float]`: uma lista com o mesmo tamanho da camada de saída da rede. Para posição(rótulo), existirá um float informando a probabilidade da entrada corresponder com cada rótulo. Deve-se considerar como predição o rótulo no qual tiver maior probabilidade.
+#### Return:
+`list[float]`: a list with the same size as the output layer of the network. For each position (label), there will be a float indicating the probability of the input corresponding to each label. The label with the highest probability should be considered as the prediction.
 
-Exemplo:
+Example:
 ```py
 input = [10, 2, 4, 4, 100, 90, 3, -1, 9, 10]
 output = net.send(input)
 print(output)
 # [0.2, 0.05, 0.7, 0.05, 0.0]
 '''
-    A rede atribuiu a probabilidade para cada rótulo. Logo, há 20% de chance do rótulo
-    relacionado a posição 0 ser a resposta, e há 70% de chance do rótulo relacionado a
-    posição 2 ser a a resposta da entrada cedida à rede.
+    The network assigns probabilities to each label. Therefore, there is a 20% chance of the label
+    related to position 0 being the answer, and there is a 70% chance of the label related to
+    position 2 being the answer to the input provided to the network.
 '''
 ```
 
 ### learn
 
-#### Parâmetros:
-- `input (list of floats)`: Os valores de entrada que serão enviados para a rede.
-- `output (list of floats)`: A probabilidade esperada de cada rótulo estar relacionado com o input. Note que a soma de todas as probabilidades deverá ser igual a __1.0__.
+#### Parameters:
+- `input (list of floats)`: The input values to be sent to the network.
+- `output (list of floats)`: The expected probability of each label being related to the input. Note that the sum of all probabilities should be equal to __1.0.__
 
-#### Retorno:
-Não há retorno, a rede apenas aprende utilizando __backpropagation__ e atualiza seus pesos e biases.
+#### Return:
+There is no return; the network only learns using __backpropagation__ and updates its weights and biases.
 
-Exemplo:
+Example:
 ```py
 input = [10, 2, 4, 4, 100, 90, 3, -1, 9, 10]
 output = [0.0, 0.0, 1.0, 0.0, 0.0]
 
 net.learn(input, output)
 '''
-    A resposta para o input dado deve ser 2. Logo, a rede recebe
-    o output esperado do mar de probabilidades e aprende a diminuir o erro.
+    The response for the given input should be 2. Therefore, the network receives
+    the expected output from the sea of probabilities and learns to reduce the error.
 '''
 ```
 
 ### export
 
-#### Parâmetros:
-- `filename (string)`: O nome do arquivo que você deseja dar para o novo arquivo de dados exportado.
-- `path (string)`: caminho onde você deseja salvar seu arquivo. Coloque o diretório dentro da pasta de destino.
+#### Parameters:
+- `filename (string)`: The name you want to give to the new exported data file.
+- `path (string)`: The path where you want to save your file. Place the directory inside the destination folder.
 
-ex.: você poderá encontrar o arquivo neste diretório: `<path><filename>.brain`
+e.g., you can find the file in this directory: `<path><filename>.brain`
 
-#### Retorno:
-Não há um retorno, mas você pode verificar se o arquivo se encontra no caminho especificado. Se sim, você já poderá compartilhar com outras aplicações e reutilizar os dados da sua rede e continuar o seu trabalho de onde parou.
+#### Return:
+There is no return, but you can check if the file exists at the specified path. If it does, you can already share it with other applications and reuse the network's data and continue your work from where you left off.
 
 ### cost
 
-#### Parâmetros:
-- `input (list of floats)`: Os valores de entrada que serão enviados para a rede.
-- `output (list of floats)`: A probabilidade esperada de cada rótulo estar relacionado com o input. Note que a soma de todas as probabilidades deverá ser igual a __1.0__.
+#### Parameters:
+- `input (list of floats)`:  The input values to be sent to the network.
+- `output (list of floats)`:  The expected probability of each label being related to the input. Note that the sum of all probabilities should be equal to __1.0__.
 
-#### Retorno:
-`float`: o valor da média do quadrado das diferenças entre o output esperado pelo usuário e o output gerado pela rede.
+#### Return:
+`float`: the value of the mean of the squares of the differences between the output expected by the user and the output generated by the network.
 
-Exemplo:
+Example:
 ```py
 input = [10, 2, 4, 4, 100, 90, 3, -1, 9, 10]
 output = [0.0, 0.0, 1.0, 0.0, 0.0]
@@ -131,4 +131,4 @@ print(mse)
 # 0.027
 ```
 
-> O tipo de dado `.brain` é um formato totalmente autoral deste projeto, suas especificações no momento não apresentam documentações, mas você pode conferir manualmente dentro da pasta `Kinho/brain`. Em breve, se necessário, haverá uma documentação mais explícita de como ler/criar este tipo de dado e quais especificações devem-se seguir para ser considerado um formato válido.
+> The `.brain` data type is a completely proprietary format of this project; its specifications currently do not have documentation, but you can check manually inside the `Kinho/brain` folder. Soon, if necessary, there will be more explicit documentation on how to read/create this data type and what specifications must be followed to be considered a valid format.
