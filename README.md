@@ -4,6 +4,7 @@ Class for a feedforward neural network with an input layer, hidden layers, and a
 The network is called `Neural`, a `CNN` that you can import from the `Kinho` package.
 
 ## How to install
+`Python version: <3.12`
 ```
 pip install Kinho
 ```
