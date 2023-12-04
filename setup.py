@@ -36,7 +36,12 @@ setup(
     author=author,
     author_email=email,
     url='https://github.com/kinhosz/Neural',
-    install_requires=[],
+    install_requires=[
+        'colorama==0.4.6',
+        'llvmlite==0.40.1',
+        'numba==0.57.1',
+        'numpy==1.24.3'
+    ],
     license='MIT',
     keywords=['dev', 'web'],
     classifiers=[
