@@ -7,6 +7,7 @@ class Softmax:
         self._gpu = gpuMode
         self._inBuffer = None
         self._outBuffer = None
+
         if self._gpu:
             arr = cuda.device_array(in_shape, dtype=np.float64)
             self._inBuffer = cuda.to_device(arr)

@@ -15,9 +15,9 @@ class DotMatrix:
             self._weight = cuda.to_device(weight)
             self._biase = cuda.to_device(biase)
 
-            arr = cuda.device_array((self._batchsize, ) + (1, weight.shape[0]), dtype=np.float64)
-            self._inBuffer = cuda.to_device(arr)
             arr = cuda.device_array((self._batchsize, ) + (1, weight.shape[1]), dtype=np.float64)
+            self._inBuffer = cuda.to_device(arr)
+            arr = cuda.device_array((self._batchsize, ) + (1, weight.shape[0]), dtype=np.float64)
             self._outBuffer = cuda.to_device(arr)
 
     def send(self, signals):
