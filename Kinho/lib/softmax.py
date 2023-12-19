@@ -8,6 +8,7 @@ class Softmax:
         self._inBuffer = None
         self._outBuffer = None
         self._typeLayer = 'selector'
+        self._cache = None
 
         if self._gpu:
             arr = cuda.device_array(in_shape, dtype=np.float64)
@@ -21,6 +22,8 @@ class Softmax:
         return self._typeLayer
 
     def send(self, signals):
+        self._cache = signals
+
         if self._gpu:
             return gpu.softmax(signals=signals,
                                extra=self._extra,
@@ -28,12 +31,12 @@ class Softmax:
         else:
             return cpu.softmax(signals=signals)
     
-    def learn(self, signals, alphas):
+    def learn(self, alphas):
         if self._gpu:
-            return gpu.softmax_derivate(signals=signals,
+            return gpu.softmax_derivate(signals=self._cache,
                                         alphas=alphas,
                                         extra=self._extra,
                                         buffer=self._outBuffer)
         else:
-            return cpu.softmax_derivate(signals=signals,
+            return cpu.softmax_derivate(signals=self._cache,
                                          alphas=alphas)

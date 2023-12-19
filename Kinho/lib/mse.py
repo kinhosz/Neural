@@ -8,6 +8,7 @@ class MSE:
         self._inBuffer = None
         self._outBuffer = None
         self._typeLayer = 'cost'
+        self._cache = None
 
         if self._gpu:
             arr = cuda.device_array((1,), dtype=np.float64)
@@ -19,6 +20,7 @@ class MSE:
         return self._typeLayer
 
     def send(self, predict, target):
+        self._cache = predict
         if self._gpu:
             return gpu.mse(predict=predict,
                            target=target,
@@ -27,11 +29,11 @@ class MSE:
             return cpu.mse(predict=predict,
                            target=target)
     
-    def learn(self, predicts, targets):
+    def learn(self, targets):
         if self._gpu:
-            return gpu.mse_derivate(predicts=predicts,
+            return gpu.mse_derivate(predicts=self._cache,
                                     targets=targets,
                                     buffer=self._outBuffer)
         else:
-            return cpu.mse_derivate(predicts=predicts,
+            return cpu.mse_derivate(predicts=self._cache,
                                     targets=targets)

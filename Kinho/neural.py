@@ -106,8 +106,10 @@ class Neural(object):
         return x
 
     def __backPropagation(self, signals, targets):
-        for i in range(len(self._layer)):
+        for i in range(len(self._layer) - 1):
             signals = self._layer[i].send(signals)
+        
+        self._layer[-1].send(signals, targets)
         
         for i in reversed(range(len(self._layer))):
             targets = self._layer[i].learn(targets)
@@ -168,8 +170,9 @@ class Neural(object):
 
         np_x = self.__buildMsg(np.array([[x]]))
         np_y = self.__buildMsg(np.array([[y]]))
-
-        ret = self.__loss(self.__feedForward(np_x), np_y, buffer=self.__getReserve('cost', 0))
+        
+        np_x = self.__feedForward(np_x)
+        ret = self._layer[-1].send(np_x, np_y)
 
         return ret[0]
     

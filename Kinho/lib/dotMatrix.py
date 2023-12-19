@@ -15,6 +15,7 @@ class DotMatrix:
         self._weight = weight
         self._biase = biase
         self._typeLayer = 'neurons'
+        self._cache = None
 
         if self._gpu:
             self._weight = cuda.to_device(weight)
@@ -38,6 +39,7 @@ class DotMatrix:
         return self._typeLayer
 
     def send(self, signals):
+        self._cache = signals
         if self._gpu:
             return gpu.dot_matrix(signals=signals,
                                   weight=self._weight,
@@ -48,8 +50,8 @@ class DotMatrix:
                                   weight=self._weight,
                                   bias=self._biase)
     
-    def learn(self, signals, alphas):
-        nabla_w = self._transpose(signals, alphas)
+    def learn(self, alphas):
+        nabla_w = self._transpose(self._cache, alphas)
         nabla_b = alphas
         response = None
 
