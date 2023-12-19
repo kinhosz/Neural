@@ -7,18 +7,23 @@ class Sigmoid2:
         self._gpu = gpuMode
         self._inBuffer = None
         self._outBuffer = None
+        self._typeLayer = 'activation'
+
         if self._gpu:
             arr = cuda.device_array(in_shape, dtype=np.float64)
             self._inBuffer = cuda.to_device(arr)
             arr = cuda.device_array(out_shape, dtype=np.float64)
             self._outBuffer = cuda.to_device(arr)
+        
+    def type(self):
+        return self._typeLayer
 
     def send(self, signals):
         if self._gpu:
             return gpu.sigmoid2(signals=signals, buffer=self._inBuffer)
         else:
             return cpu.sigmoid2(signals=signals)
-    
+
     def learn(self, signals, alphas):
         if self._gpu:
             return gpu.sigmoid2_derivate(signals=signals,

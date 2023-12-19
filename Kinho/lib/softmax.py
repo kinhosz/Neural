@@ -7,6 +7,7 @@ class Softmax:
         self._gpu = gpuMode
         self._inBuffer = None
         self._outBuffer = None
+        self._typeLayer = 'selector'
 
         if self._gpu:
             arr = cuda.device_array(in_shape, dtype=np.float64)
@@ -15,6 +16,9 @@ class Softmax:
             self._outBuffer = cuda.to_device(arr)
             arr = cuda.device_array((in_shape[0], in_shape[1]), dtype=np.float64)
             self._extra = cuda.to_device(arr)
+
+    def type(self):
+        return self._typeLayer
 
     def send(self, signals):
         if self._gpu:
