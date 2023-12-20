@@ -27,7 +27,7 @@ class Softmax:
         if self._gpu:
             return gpu.softmax(signals=signals,
                                extra=self._extra,
-                               buffer=self._inBuffer)
+                               buffer=self._outBuffer)
         else:
             return cpu.softmax(signals=signals)
     
@@ -36,7 +36,7 @@ class Softmax:
             return gpu.softmax_derivate(signals=self._cache,
                                         alphas=alphas,
                                         extra=self._extra,
-                                        buffer=self._outBuffer)
+                                        buffer=self._inBuffer)
         else:
             return cpu.softmax_derivate(signals=self._cache,
                                          alphas=alphas)

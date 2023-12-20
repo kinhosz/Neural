@@ -60,8 +60,8 @@ class Neural(object):
         for i in range(0, len(architecture) - 1):
             self._layer.append(
                 Sigmoid2(
-                    (1, architecture[i]),
-                    (1, architecture[i]),
+                    (self.__mini_batch, 1, architecture[i]),
+                    (self.__mini_batch, 1, architecture[i]),
                     gpuMode=self.__gpuMode
                 )
             )
@@ -78,23 +78,23 @@ class Neural(object):
         
         self._layer.append(
             Sigmoid2(
-                (1, architecture[-1]),
-                (1, architecture[-1]),
+                (self.__mini_batch, 1, architecture[-1]),
+                (self.__mini_batch, 1, architecture[-1]),
                 gpuMode=self.__gpuMode
             )
         )
         
         self._layer.append(
             Softmax(
-                (1, architecture[-1]),
-                (1, architecture[-1]),
+                (self.__mini_batch, 1, architecture[-1]),
+                (self.__mini_batch, 1, architecture[-1]),
                 gpuMode=self.__gpuMode
             )
         )
         
         self._layer.append(
             MSE(
-               (1, architecture[-1]),
+               (self.__mini_batch, 1, architecture[-1]),
                gpuMode=self.__gpuMode 
             )
         )
@@ -179,9 +179,9 @@ class Neural(object):
     def export(self, filename, path):
         layers = []
 
-        for w, b in zip(self.__weights, self.__biases):
-            w_host, b_host = loadTo(w, b, mode='CPU')
-            layers.append((w_host, b_host))
+        for layer in self._layer:
+            if layer.type() == 'neurons':
+                layers.append((layer.weight(), layer.biase()))
         
         wrapper = Wrapper(layers)
 

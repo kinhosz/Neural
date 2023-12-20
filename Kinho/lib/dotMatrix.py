@@ -69,10 +69,10 @@ class DotMatrix:
         return response
     
     def weight(self):
-        return self._weight.copy_to_host()
+        return self._weight.copy_to_host() if self._gpu else self._weight
     
     def bias(self):
-        return self._biase.copy_to_host()
+        return self._biase.copy_to_host() if self._gpu else self._biase
     
     def _transpose(self, signals, alphas):
         if self._gpu:

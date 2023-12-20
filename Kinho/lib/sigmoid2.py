@@ -23,7 +23,7 @@ class Sigmoid2:
         self._cache = signals
 
         if self._gpu:
-            return gpu.sigmoid2(signals=signals, buffer=self._inBuffer)
+            return gpu.sigmoid2(signals=signals, buffer=self._outBuffer)
         else:
             return cpu.sigmoid2(signals=signals)
 
@@ -31,7 +31,7 @@ class Sigmoid2:
         if self._gpu:
             return gpu.sigmoid2_derivate(signals=self._cache,
                                         alphas=alphas,
-                                        buffer=self._outBuffer)
+                                        buffer=self._inBuffer)
         else:
             return cpu.sigmoid2_derivate(signals=self._cache,
                                          alphas=alphas)
