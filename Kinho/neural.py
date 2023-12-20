@@ -3,13 +3,7 @@ import math
 from .transfer import loadTo
 from .brain import Wrapper, Builder
 from .lib import *
-from numba.cuda.cudadrv.devicearray import DeviceNDArray
 from numba import cuda
-from typing import Union
-
-DATASTREAM = Union[DeviceNDArray, np.ndarray]
-
-MINIMUMBLOCKSIZE = 28
 
 EPS = 1e-8
 
