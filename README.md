@@ -1,4 +1,4 @@
-# Neural Network
+# Neural Network [![Downloads](https://static.pepy.tech/badge/kinho)](https://pepy.tech/project/kinho) [![Downloads](https://static.pepy.tech/badge/kinho/month)](https://pepy.tech/project/kinho) [![Downloads](https://static.pepy.tech/badge/kinho/week)](https://pepy.tech/project/kinho)
 Class for a feedforward neural network with an input layer, hidden layers, and an output layer.
 
 The network is called `Neural`, a `CNN` that you can import from the `Kinho` package.
