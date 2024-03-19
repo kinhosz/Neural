@@ -12,7 +12,7 @@ def ceil(A, B):
 
 class Neural(object):
 
-    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1):
+    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1, multilabel=False):
         if not sizes and not brain_path:
             raise TypeError('Should set `sizes` or `brain_path` params')
 
@@ -22,6 +22,7 @@ class Neural(object):
         self.__mini_batch = mini_batch_size
         self.__fill = 0
         self.__tmp = {}
+        self._multilabel = multilabel
         
         if 2**int(math.log2(self.__mini_batch)) != self.__mini_batch:
             raise TypeError("Mini-batch size is invalid. You can use {}".format(2**int(math.log2(max(1, self.__mini_batch)))))
@@ -78,13 +79,14 @@ class Neural(object):
             )
         )
         
-        self._layer.append(
-            Softmax(
-                (self.__mini_batch, 1, architecture[-1]),
-                (self.__mini_batch, 1, architecture[-1]),
-                gpuMode=self.__gpuMode
+        if not self._multilabel:
+            self._layer.append(
+                Softmax(
+                    (self.__mini_batch, 1, architecture[-1]),
+                    (self.__mini_batch, 1, architecture[-1]),
+                    gpuMode=self.__gpuMode
+                )
             )
-        )
         
         self._layer.append(
             MSE(

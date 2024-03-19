@@ -11,7 +11,7 @@ pip install Kinho
 
 ## Methods:
 ```py
-def __init__(sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1):
+def __init__(sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1, multilabel=False):
     pass
 
 def send(input):
@@ -35,6 +35,7 @@ def cost(input, output):
 - `eta (float)`: learning rate. If not defined, we assume a default rate of 0.01.
 - `gpu (bool)`: if **True**, allows the neural network to automatically switch the context for GPU usage to improve performance.
 - `mini_batch_size(int)`: power of 2. The network will process learning in parallel with the mini-batch size passed. If the GPU option is not selected, the network will continue to process data with the same mini-batch size but without parallelization. The size of the mini-batch depends on available memory, a size of 128 is usually better.
+- `multilabel`: if for one instance, you need select more than one label.
 
 Example:
 ```py
@@ -77,7 +78,8 @@ print(output)
 '''
     The network assigns probabilities to each label. Therefore, there is a 20% chance of the label
     related to position 0 being the answer, and there is a 70% chance of the label related to
-    position 2 being the answer to the input provided to the network.
+    position 2 being the answer to the input provided to the network. If multilabel flag was set to True,
+    the network will return probabilities for each label independently.
 '''
 ```
 
@@ -85,7 +87,7 @@ print(output)
 
 #### Parameters:
 - `input (list of floats)`: The input values to be sent to the network.
-- `output (list of floats)`: The expected probability of each label being related to the input. Note that the sum of all probabilities should be equal to __1.0.__
+- `output (list of floats)`: The expected probability of each label being related to the input. Note that the sum of all probabilities should be equal to __1.0.__, ignore the sum if `multilabel` flag was set to __True__.
 
 #### Return:
 There is no return; the network only learns using __backpropagation__ and updates its weights and biases.
