@@ -13,10 +13,11 @@ def perform(buffer: DeviceNDArray, signals: DeviceNDArray):
         y_col >= buffer.shape[2]:
             return None
     
-    exp_value = math.exp(-signals[batch_id, 0, y_col])
-    exp_plus_one_square = (1.0 + exp_value) * (1.0 + exp_value)
-    
-    buffer[batch_id, 0, y_col] = (2.0 * exp_value)/exp_plus_one_square
+    exp_minus_value = math.exp(-signals[batch_id, 0, y_col])
+    exp_value = math.exp(signals[batch_id, 0, y_col])
+    sum_total = (exp_minus_value + exp_value + 2.0)
+
+    buffer[batch_id, 0, y_col] = 1.0/sum_total
 
 def sigmoid_0_1_derivate(buffer: DeviceNDArray, signals: DeviceNDArray):
     blockspergrid = grid_config(

@@ -13,7 +13,7 @@ def perform(buffer: DeviceNDArray, const_z: DeviceNDArray):
         y_col >= const_z.shape[2]:
             return None
     
-    buffer[batch_id, 0, y_col] = 2.0 * (1.0 / (1.0 + math.exp(-const_z[batch_id, 0, y_col]))) - 1.0
+    buffer[batch_id, 0, y_col] = (1.0 / (1.0 + math.exp(-const_z[batch_id, 0, y_col])))
 
 def sigmoid_0_1(buffer: DeviceNDArray, signals: DeviceNDArray):
     """sigmoid with media: 0, std-dvt: 1
