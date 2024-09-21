@@ -72,16 +72,16 @@ class Neural(object):
                     gpuMode=self.__gpuMode
                 )
             )
-        
-        self._layer.append(
-            Sigmoid2(
-                (self.__mini_batch, 1, architecture[-1]),
-                (self.__mini_batch, 1, architecture[-1]),
-                gpuMode=self.__gpuMode
+
+        if self._multilabel or architecture[-1] == 1:
+            self._layer.append(
+                Sigmoid2(
+                    (self.__mini_batch, 1, architecture[-1]),
+                    (self.__mini_batch, 1, architecture[-1]),
+                    gpuMode=self.__gpuMode
+                )
             )
-        )
-        
-        if not self._multilabel:
+        else:
             self._layer.append(
                 Softmax(
                     (self.__mini_batch, 1, architecture[-1]),
@@ -89,7 +89,7 @@ class Neural(object):
                     gpuMode=self.__gpuMode
                 )
             )
-        
+
         self._layer.append(
             MSE(
                (self.__mini_batch, 1, architecture[-1]),
