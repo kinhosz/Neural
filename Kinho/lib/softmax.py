@@ -21,22 +21,22 @@ class Softmax:
     def type(self):
         return self._typeLayer
 
-    def send(self, signals):
-        self._cache = signals
+    def send(self, in_data):
+        self._cache = in_data
 
         if self._gpu:
-            return gpu.softmax(signals=signals,
+            return gpu.softmax(signals=in_data,
                                extra=self._extra,
                                buffer=self._outBuffer)
         else:
-            return cpu.softmax(signals=signals)
+            return cpu.softmax(signals=in_data)
     
-    def learn(self, alphas):
+    def learn(self, gradients):
         if self._gpu:
             return gpu.softmax_derivate(signals=self._cache,
-                                        alphas=alphas,
+                                        alphas=gradients,
                                         extra=self._extra,
                                         buffer=self._inBuffer)
         else:
             return cpu.softmax_derivate(signals=self._cache,
-                                         alphas=alphas)
+                                         alphas=gradients)
