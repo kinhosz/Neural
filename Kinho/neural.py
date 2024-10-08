@@ -99,7 +99,7 @@ class Neural(object):
 
     def __feedForward(self, x):
         for i in range(len(self._layer) - 1):
-            x = self._layer[i].send(signals=x)
+            x = self._layer[i].send(x)
 
         return x
 
