@@ -1,3 +1,5 @@
+from .convolution import convolution
+from .convolution_derivate import convolution_derivate
 from .dot_matrix import dot_matrix
 from .dot_matrix_derivate import dot_matrix_derivate
 from .max_pooling import max_pooling
