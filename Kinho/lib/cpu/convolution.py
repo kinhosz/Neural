@@ -11,6 +11,8 @@ def convolution(in_data: Tensor, weight: Tensor, biase: Tensor) -> Tensor:
     Returns:
         Tensor: [L][N][M]
     """
+    print("#######")
+    print(in_data.shape())
     _, N, M = in_data.shape()
     L, = biase.shape()
 

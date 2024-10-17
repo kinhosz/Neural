@@ -11,11 +11,15 @@ class Tensor(object):
             the tensor's size
     """
 
-    _data: Union[List[float], List['Tensor']]
+    _data: Union[List[float], List['Tensor']] = []
+    _len: int = 0
 
     def __init__(self, shape: tuple[int], uniform=False):
+        self._len = shape[0]
+
         if len(shape) != 1:
-            self._data = Tensor(shape[1:], uniform=uniform)
+            for _ in range(self._len):
+                self._data.append(Tensor(shape[1:], uniform=uniform))
         elif uniform:
             self._data = np.random.uniform(-1, 1, shape[0]).tolist()
         else:
@@ -34,6 +38,6 @@ class Tensor(object):
 
     def shape(self):
         if not isinstance(self._data[0], Tensor):
-            return (len(self._data),)
+            return (self._len,)
         else:
-            return (len(self._data),) + self._data[0].shape()
+            return (self._len,) + self._data[0].shape()
