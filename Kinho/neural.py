@@ -43,13 +43,13 @@ class Neural(object):
 
     def _genRandomWeights(self, arch):
         return [
-            np.random.uniform(-2,2,x*y).reshape((x, y)) 
+            np.random.uniform(low=-1,high=1,size=x*y).reshape((x, y)) 
             for x,y in zip(arch[:-1], arch[1:])
         ]
     
     def _genRandomBiases(self, arch):
         return [
-            np.random.uniform(0, -1, x).reshape((1,x)) 
+            np.random.uniform(low=-1, high=1, size=x).reshape((1,x)) 
             for x in arch[1:]
         ]
 
