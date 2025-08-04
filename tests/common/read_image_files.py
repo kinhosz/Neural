@@ -12,7 +12,7 @@ def read_image_files(url):
 		for i in range(rows):
 			for j in range(columns):
 				pixel = int.from_bytes(f.read(1),byteorder="big",signed=False)
-				image.append(pixel)
+				image.append(pixel / 255)
 		images.append(image)
 
 	f.close()
