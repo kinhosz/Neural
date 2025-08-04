@@ -81,6 +81,12 @@ class Neural(object):
                     gpuMode=self.__gpuMode
                 )
             )
+            self._layer.append(
+                BCE(
+                    (self.__mini_batch, 1, architecture[-1]),
+                    gpuMode=self.__gpuMode 
+                )
+            )
         else:
             self._layer.append(
                 Softmax(
@@ -89,13 +95,13 @@ class Neural(object):
                     gpuMode=self.__gpuMode
                 )
             )
-
-        self._layer.append(
-            MSE(
-               (self.__mini_batch, 1, architecture[-1]),
-               gpuMode=self.__gpuMode 
+            # TODO: Change MSE to Cross-entropy
+            self._layer.append(
+                MSE(
+                    (self.__mini_batch, 1, architecture[-1]),
+                    gpuMode=self.__gpuMode 
+                )
             )
-        )
 
     def __feedForward(self, x):
         for i in range(len(self._layer) - 1):
