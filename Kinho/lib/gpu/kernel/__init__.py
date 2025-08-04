@@ -19,3 +19,5 @@ from .mse import mse
 from .memset_constant import memset_constant
 from .bce import bce
 from .bce_derivate import bce_derivate
+from .relu import relu
+from .relu_derivate import relu_derivate

@@ -11,3 +11,5 @@ from .partial_gradient import partial_gradient
 from .mse import mse
 from .bce import bce
 from .bce_derivate import bce_derivate
+from .relu import relu
+from .relu_derivate import relu_derivate

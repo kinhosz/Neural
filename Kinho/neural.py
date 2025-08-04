@@ -42,21 +42,21 @@ class Neural(object):
                                     biases=self._genRandomBiases(sizes))
 
     def _genRandomWeights(self, arch):
+        # He initialization
         return [
-            np.random.uniform(-2,2,x*y).reshape((x, y)) 
-            for x,y in zip(arch[:-1], arch[1:])
+            np.random.normal(0, np.sqrt(2 / x), size=(x, y)) 
+            for x, y in zip(arch[:-1], arch[1:])
         ]
-    
+
     def _genRandomBiases(self, arch):
         return [
-            np.random.uniform(0, -1, x).reshape((1,x)) 
-            for x in arch[1:]
+            np.zeros((1, x)) for x in arch[1:]
         ]
 
     def _buildArchitecture(self, architecture, weights, biases):
         for i in range(0, len(architecture) - 1):
             self._layer.append(
-                Sigmoid2(
+                ReLU(
                     (self.__mini_batch, 1, architecture[i]),
                     (self.__mini_batch, 1, architecture[i]),
                     gpuMode=self.__gpuMode
