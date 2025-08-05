@@ -9,3 +9,7 @@ from .dot_matrix_derivate import dot_matrix_derivate
 from .stochastic_gradient_descent import stochastic_gradient_descent
 from .partial_gradient import partial_gradient
 from .mse import mse
+from .bce_derivate import bce_derivate
+from .bce import bce
+from .relu import relu
+from .relu_derivate import relu_derivate
