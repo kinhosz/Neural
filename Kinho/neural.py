@@ -117,6 +117,8 @@ class Neural(object):
         
         for i in reversed(range(len(self._layer))):
             targets = self._layer[i].learn(targets)
+
+        return targets
     
     def __buildMsg(self, x):
         if self.__gpuMode:
