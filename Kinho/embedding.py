@@ -106,7 +106,7 @@ class EmbeddingNeural(Neural):
         layer_len = 0
         for d in in_dim:
             el = EncodingLayer(d)
-            self._encoding_layers.append(d)
+            self._encoding_layers.append(el)
             layer_len += el.dimension
 
         return layer_len
@@ -140,18 +140,42 @@ class EmbeddingNeural(Neural):
             pointer_start += el.dimension
         self._history_table.append(batch_calls)
 
-    def __backPropagation(self, signals, targets):
-        gradients = super().__backPropagation(signals, targets)
+    def _backPropagation(self, signals, targets):
+        gradients = super()._backPropagation(signals, targets)
+        eta = float(self._eta[0])
 
-        for batch_id in len(gradients):
-            gradient = gradients[batch_id]
+        x_len = gradients.shape[2]
+
+        nabla = [0.0] * x_len
+        for i in range(x_len):
+            for b in range(self._mini_batch):
+                nabla[i] += gradients[b][0][i]
+
+        sum_table = {}
+
+        for batch_id in range(len(gradients)):
+            gradient = gradients[batch_id][0].tolist()
             batch_calls = self._history_table[batch_id]
 
             for el_id, key, pointer_left in batch_calls:
                 el: EncodingLayer = self._encoding_layers[el_id]
                 vt = el[key]
+                if sum_table.get((el_id, key), -1) == -1:
+                    sum_table[(el_id, key)] = {
+                        'sum': [0.0] * el.dimension,
+                        'cnt': 0,
+                    }
+                node = sum_table[(el_id, key)]
                 for i in range(el.dimension):
-                    vt[i] -= gradient[pointer_left + i] * self.__eta
+                    node['sum'][i] += gradient[pointer_left + i]
+                node['cnt'] += 1
+
+        for (el_id, key), node in sum_table.items():
+            el = self._encoding_layers[el_id]
+            vt = el[key]
+            for i in range(el.dimension):
+                delta = node['sum'][i] / node['cnt']
+                vt[i] -= delta * eta
 
         self._history_table = []
 

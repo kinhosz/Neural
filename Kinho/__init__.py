@@ -1,4 +1,5 @@
 from .neural import Neural
+from .embedding import EmbeddingNeural
 
 __author__ = 'Kinhosz'
 __email__ = 'scruz.josecarlos@gmail.com'
