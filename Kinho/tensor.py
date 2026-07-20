@@ -44,6 +44,19 @@ class Tensor(object):
 
         return self
 
+    @staticmethod
+    def from_trusted_list(data: list) -> 'Tensor':
+        """Builds a Tensor from a list already known to be well-formed
+        (e.g. straight out of ndarray.tolist()) - skips load_from's
+        validation, which dominates the cost of converting large tensors."""
+        t = Tensor()
+        t._len = len(data)
+        if isinstance(data[0], list):
+            t._data = [Tensor.from_trusted_list(v) for v in data]
+        else:
+            t._data = data
+        return t
+
     def _assert_same_shape(self):
         if is_float(self._data[0]):
             return
@@ -78,6 +91,11 @@ class Tensor(object):
 
     def __rmul__(self, other: float):
         return self.__mul__(other)
+
+    def to_list(self):
+        if is_float(self._data[0]):
+            return list(self._data)
+        return [v.to_list() for v in self._data]
 
     def shape(self):
         if not isinstance(self._data[0], Tensor):

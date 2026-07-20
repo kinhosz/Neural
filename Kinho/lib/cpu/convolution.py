@@ -1,5 +1,8 @@
+import numpy as np
+
 from ...tensor import Tensor
-from .get_local_field import get_local_field
+from ._np_bridge import to_ndarray, to_tensor
+
 
 def convolution(in_data: Tensor, weight: Tensor, biase: Tensor) -> Tensor:
     """Evaluates the convolution: (weight * in_data) + biase
@@ -12,36 +15,20 @@ def convolution(in_data: Tensor, weight: Tensor, biase: Tensor) -> Tensor:
     Returns:
         Tensor: [L][N][M]
     """
-    _, N, M = in_data.shape()
-    L, = biase.shape()
+    in_arr = to_ndarray(in_data)
+    weight_arr = to_ndarray(weight)
+    biase_arr = to_ndarray(biase)
 
-    ret = Tensor((L, N, M))
+    K, N, M = in_arr.shape
+    L = biase_arr.shape[0]
 
-    for i in range(N):
-        for j in range(M):
-            local_field = get_local_field(in_data, i, j)
-            res = apply_convolution(local_field, weight, biase)
-            for l in range(L):
-                ret[l][i][j] = res[l]
+    padded = np.pad(in_arr, ((0, 0), (1, 1), (1, 1)))
+    # im2col: every 3x3xK window, one per output position, as a matrix row
+    cols = np.lib.stride_tricks.sliding_window_view(padded, (3, 3), axis=(1, 2))
+    cols = cols.transpose(1, 2, 0, 3, 4).reshape(N * M, K * 3 * 3)
 
-    return ret
+    weight_flat = weight_arr.reshape(L, K * 3 * 3)
+    out = cols @ weight_flat.T + biase_arr  # (N*M, L)
+    out = out.T.reshape(L, N, M)
 
-def apply_convolution(local_field: Tensor, weight: Tensor, biase: Tensor) -> Tensor:
-    L, = biase.shape()
-    res = Tensor((L,))
-
-    for l in range(L):
-        res[l] = dot_product(local_field, weight[l]) + biase[l]
-
-    return res
-
-def dot_product(A: Tensor, B: Tensor) -> float:
-    K, N, M = A.shape()
-    res = 0.0
-
-    for k in range(K):
-        for i in range(N):
-            for j in range(M):
-                res += A[k][i][j] * B[k][i][j]
-
-    return res
+    return to_tensor(out)
