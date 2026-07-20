@@ -88,32 +88,32 @@ class ConvNeural(Neural):
 
         return Tensor().load_from(nn_out_data.tolist())
 
+    def _out_to_target(self, tensor: Tensor) -> NDArray:
+        Z = tensor.shape()[2]
+        return np.array([[[tensor[0][0][z] for z in range(Z)]]])  # (1, 1, Z)
+
     def _backpropagation(self, in_data: Tensor, out_data: Tensor) -> None:
-        # Calling `_feed_forward` first because we must cache `in_data` for backbone's layer
+        # Calling `_pre_nn_feed_forward` first because we must cache `in_data` for backbone's layer
         nn_in_data = self._pre_nn_feed_forward(in_data)
+        nn_out_data = self._out_to_target(out_data)
 
-        def out_data_to_target(tensor):
-            Z = tensor.shape()[2]
-            return np.array([[[tensor[0][0][z] for z in range(Z)]]])  # (1, 1, Z)
-
-        nn_out_data = out_data_to_target(out_data)
         nn_gradients = super()._backpropagation(signals=nn_in_data, targets=nn_out_data)
 
-        def target_to_gradients(arr):
-            K = arr.shape[2]
-            gradients = Tensor((K, 1, 1))
-            for k in range(K):
-                gradients[k][0][0] = arr[0][0][k]
-            return gradients
-
-        gradients = target_to_gradients(nn_gradients)
+        K = nn_gradients.shape[2]
+        gradients = Tensor((K, 1, 1))
+        for k in range(K):
+            gradients[k][0][0] = nn_gradients[0][0][k]
 
         for func in reversed(self._backbone):
             gradients = func.learn(gradients=gradients)
 
-    def _cost(self, in_data: Tensor, out_data: Tensor) -> Tensor:
-        predict = self._feed_forward(in_data)
-        return self._dense_layer[-1].send(predict=predict, target=out_data)
+    def _cost(self, in_data: Tensor, out_data: Tensor) -> NDArray:
+        nn_in_data = self._pre_nn_feed_forward(in_data)
+        nn_out_data = self._out_to_target(out_data)
+
+        predict = super()._feed_forward(nn_in_data)  # (1, 1, Z), raw pre-MSE
+
+        return self._layer[-1].send(predict, nn_out_data)
 
     def send(self, in_data: Tensor) -> Tensor:
         """
@@ -179,4 +179,7 @@ class ConvNeural(Neural):
         return cost_error[0]
 
     def export(self):
+        # TODO: export the dense head via `super().export(...)` (already
+        # compatible, same `self._layer`) and the backbone (`self._backbone`)
+        # into a separate file, since its weight format may still change.
         pass
