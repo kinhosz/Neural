@@ -42,10 +42,15 @@ class Neural(object):
                                     biases=self._genRandomBiases(sizes))
 
     def _genRandomWeights(self, arch):
-        return [
-            np.random.uniform(low=-1,high=1,size=x*y).reshape((x, y)) 
-            for x,y in zip(arch[:-1], arch[1:])
-        ]
+        weights = []
+        for x, y in zip(arch[:-1], arch[1:]):
+            # Var(sum of fan_in weight*input terms) = fan_in * Var(weight);
+            # solving Var(weight) = limit^2/3 for Var(sum) == 1 gives this.
+            fan_in = x
+            limit = (3 / fan_in) ** 0.5
+            weights.append(np.random.uniform(low=-limit, high=limit, size=x*y).reshape((x, y)))
+
+        return weights
     
     def _genRandomBiases(self, arch):
         return [
