@@ -11,7 +11,7 @@ class Tensor(object):
         
     """
 
-    def __init__(self, shape: tuple[int] = None, uniform=False):
+    def __init__(self, shape: tuple[int] = None, uniform=False, scale=1.0):
         self._data: Union[List[float], List['Tensor']] = []
         self._len = 0
 
@@ -19,9 +19,9 @@ class Tensor(object):
             self._len = shape[0]
             if len(shape) != 1:
                 for _ in range(self._len):
-                    self._data.append(Tensor(shape[1:], uniform=uniform))
+                    self._data.append(Tensor(shape[1:], uniform=uniform, scale=scale))
             elif uniform:
-                self._data = np.random.uniform(low=-1, high=1, size=self._len).tolist()
+                self._data = np.random.uniform(low=-scale, high=scale, size=self._len).tolist()
             else:
                 self._data = [float(0.0)] * self._len
 

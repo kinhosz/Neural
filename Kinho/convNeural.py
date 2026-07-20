@@ -7,6 +7,8 @@ from .neural import Neural
 
 from .helper import calculate_pooling_layers
 
+KERNEL_SIZE = 3  # ConvLayer only supports 3x3 kernels today (see lib/cpu/convolution.py)
+
 class ConvNeural(Neural):
     """
     Class representing a convolutional neural network.
@@ -59,8 +61,13 @@ class ConvNeural(Neural):
         resources_biases = []
 
         for i in range(1, len(filters)):
+            # Var(sum of fan_in weight*input terms) = fan_in * Var(weight);
+            # solving Var(weight) = limit^2/3 for Var(sum) == 1 gives this.
+            fan_in = filters[i-1] * KERNEL_SIZE * KERNEL_SIZE
+            limit = (3 / fan_in) ** 0.5
+
             resources_weights.append(
-                Tensor((filters[i], filters[i-1], 3, 3))
+                Tensor((filters[i], filters[i-1], KERNEL_SIZE, KERNEL_SIZE), uniform=True, scale=limit)
             )
             resources_biases.append(
                 Tensor((filters[i],))
