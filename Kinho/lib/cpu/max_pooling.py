@@ -11,7 +11,7 @@ def max_pooling(in_data: Tensor) -> Tensor:
         Tensor: [k]][ceil(N/2)][ceil(M/2)]
     """
     K, I, J = in_data.shape()
-    ret = Tensor((K, (I + 1)//2, (J + 2)//2))
+    ret = Tensor((K, (I + 1)//2, (J + 1)//2))
 
     ret_K, ret_I, ret_J = ret.shape()
 

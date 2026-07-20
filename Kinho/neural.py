@@ -103,7 +103,7 @@ class Neural(object):
                 )
             )
 
-    def __feedForward(self, x):
+    def _feed_forward(self, x):
         for i in range(len(self._layer) - 1):
             x = self._layer[i].send(x)
 
@@ -154,7 +154,7 @@ class Neural(object):
         l = input
 
         x = self.__buildMsg(np.array([[l]]))
-        arr = self.__feedForward(x)
+        arr = self._feed_forward(x)
 
         hst, = loadTo(arr, mode='CPU')
         y = hst[0][0]
@@ -175,7 +175,7 @@ class Neural(object):
         np_x = self.__buildMsg(np.array([[x]]))
         np_y = self.__buildMsg(np.array([[y]]))
         
-        np_x = self.__feedForward(np_x)
+        np_x = self._feed_forward(np_x)
         ret = self._layer[-1].send(np_x, np_y)
 
         return ret[0]
