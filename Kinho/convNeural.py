@@ -1,10 +1,11 @@
-from .lib import ConvLayer, DotMatrix, MaxPooling, MSE, Sigmoid2, Softmax
+import numpy as np
+from numpy.typing import NDArray
+
+from .lib import ConvLayer, MaxPooling
 from .tensor import Tensor
 from .neural import Neural
 
 from .helper import calculate_pooling_layers
-
-import numpy as np
 
 class ConvNeural(Neural):
     """
@@ -72,24 +73,41 @@ class ConvNeural(Neural):
             self._backbone.append(ConvLayer(weight=res_weight, biase=res_biase))
             self._backbone.append(MaxPooling())
 
-    def _feed_forward(self, data: Tensor) -> Tensor:
+    def _pre_nn_feed_forward(self, data: Tensor) -> NDArray:
         for func in self._backbone:
             data = func.send(in_data=data) # (K, 1, 1)
 
         def k11_to_11k(tensor):
             return np.array([[[tensor[i][0][0] for i in range(tensor.shape()[0])]]])
 
-        nn_data = super()._feed_forward(k11_to_11k(data)) # (1, 1, Z)
+        return k11_to_11k(data) # (1, 1, Z)
 
-        return Tensor().load_from(nn_data.tolist())
+    def _feed_forward(self, data: Tensor) -> Tensor:
+        nn_in_data = self._pre_nn_feed_forward(data)
+        nn_out_data = super()._feed_forward(nn_in_data)
+
+        return Tensor().load_from(nn_out_data.tolist())
 
     def _backpropagation(self, in_data: Tensor, out_data: Tensor) -> None:
-        # Needed to be stored in cache
-        self._cost(in_data, out_data)
+        # Calling `_feed_forward` first because we must cache `in_data` for backbone's layer
+        nn_in_data = self._pre_nn_feed_forward(in_data)
 
-        gradients = out_data
-        for func in reversed(self._dense_layer): 
-            gradients = func.learn(gradients=gradients)
+        def out_data_to_target(tensor):
+            Z = tensor.shape()[2]
+            return np.array([[[tensor[0][0][z] for z in range(Z)]]])  # (1, 1, Z)
+
+        nn_out_data = out_data_to_target(out_data)
+        nn_gradients = super()._backpropagation(signals=nn_in_data, targets=nn_out_data)
+
+        def target_to_gradients(arr):
+            K = arr.shape[2]
+            gradients = Tensor((K, 1, 1))
+            for k in range(K):
+                gradients[k][0][0] = arr[0][0][k]
+            return gradients
+
+        gradients = target_to_gradients(nn_gradients)
+
         for func in reversed(self._backbone):
             gradients = func.learn(gradients=gradients)
 

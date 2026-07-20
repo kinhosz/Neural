@@ -103,7 +103,7 @@ class Neural(object):
 
         return x
 
-    def __backPropagation(self, signals, targets):
+    def _backpropagation(self, signals, targets):
         for i in range(len(self._layer) - 1):
             signals = self._layer[i].send(signals)
         
@@ -111,7 +111,9 @@ class Neural(object):
         
         for i in reversed(range(len(self._layer))):
             targets = self._layer[i].learn(targets)
-    
+
+        return targets
+
     def __buildMsg(self, x):
         if self.__gpuMode:
             return cuda.to_device(x)
@@ -138,7 +140,7 @@ class Neural(object):
         img = self.__buildMsg(img)
         target = self.__buildMsg(target)
         
-        self.__backPropagation(img, target)
+        self._backpropagation(img, target)
         self.__fill = 0
         
         self.__tmp['img'] = []
