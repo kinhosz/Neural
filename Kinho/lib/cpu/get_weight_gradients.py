@@ -1,5 +1,8 @@
+import numpy as np
+
 from ...tensor import Tensor
-from .get_local_field import get_local_field
+from ._np_bridge import to_ndarray, to_tensor
+
 
 def get_weight_gradients(in_data: Tensor, gradients: Tensor) -> Tensor:
     """Returns gradients for weights
@@ -11,22 +14,19 @@ def get_weight_gradients(in_data: Tensor, gradients: Tensor) -> Tensor:
     Returns:
         Tensor: [L][K][3][3]
     """
-    K, N, M = in_data.shape()
-    L, _, _ = gradients.shape()
-    ret = Tensor((L, K, 3, 3))
+    in_arr = to_ndarray(in_data)
+    grad_arr = to_ndarray(gradients)
 
-    for i in range(N):
-        for j in range(M):
-            local_field = get_local_field(in_data, i, j)
-            for l in range(L):
-                acum_result(ret[l], (local_field * gradients[l][i][j]))
+    K, N, M = in_arr.shape
+    L = grad_arr.shape[0]
 
-    return ret
+    # same im2col columns the forward convolution builds from `in_data`;
+    # the weight gradient is just the gradient map correlated against them
+    padded = np.pad(in_arr, ((0, 0), (1, 1), (1, 1)))
+    cols = np.lib.stride_tricks.sliding_window_view(padded, (3, 3), axis=(1, 2))
+    cols = cols.transpose(1, 2, 0, 3, 4).reshape(N * M, K * 3 * 3)
 
-def acum_result(ret: Tensor, A: Tensor):
-    K, _, _ = ret.shape()
+    grad_flat = grad_arr.reshape(L, N * M)
+    weight_grad = (grad_flat @ cols).reshape(L, K, 3, 3)
 
-    for k in range(K):
-        for i in range(3):
-            for j in range(3):
-                ret[k][i][j] += A[k][i][j]
+    return to_tensor(weight_grad)

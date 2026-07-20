@@ -1,4 +1,8 @@
+import numpy as np
+
 from ...tensor import Tensor
+from ._np_bridge import to_ndarray, to_tensor
+
 
 def convolution_derivate(weight: Tensor, gradients: Tensor) -> Tensor:
     """Evaluates the convolution's derivate: (weight * in_data) + biase
@@ -10,25 +14,22 @@ def convolution_derivate(weight: Tensor, gradients: Tensor) -> Tensor:
     Returns:
         new gradients: [K][N][M]
     """
-    _, K, _, _ = weight.shape()
-    _, N, M = gradients.shape()
+    weight_arr = to_ndarray(weight)
+    grad_arr = to_ndarray(gradients)
 
-    ret = Tensor((K, N, M))
+    L, K = weight_arr.shape[0], weight_arr.shape[1]
+    N, M = grad_arr.shape[1], grad_arr.shape[2]
 
-    for i in range(N):
-        for j in range(M):
-            update_partial_gradient(ret, weight, gradients, i, j)
+    # this is a convolution of `gradients` (as an L-channel "input") against
+    # the weight kernel spatially flipped and with its L/K axes swapped
+    weight_flipped = weight_arr[:, :, ::-1, ::-1].transpose(1, 0, 2, 3)
 
-    return ret
+    padded = np.pad(grad_arr, ((0, 0), (1, 1), (1, 1)))
+    cols = np.lib.stride_tricks.sliding_window_view(padded, (3, 3), axis=(1, 2))
+    cols = cols.transpose(1, 2, 0, 3, 4).reshape(N * M, L * 3 * 3)
 
-def update_partial_gradient(ret: Tensor, weight: Tensor, gradients: Tensor, i: int, j: int) -> None:
-    L, K, _, _ = weight.shape()
-    _, N, M = ret.shape()
+    weight_flat = weight_flipped.reshape(K, L * 3 * 3)
+    out = cols @ weight_flat.T  # (N*M, K)
+    out = out.T.reshape(K, N, M)
 
-    for l in range(L):
-        for di in range(-1, 2):
-            for dj in range(-1, 2):
-                if di + i < 0 or di + i >= N or dj + j < 0 or dj + j >= M:
-                    continue
-                for k in range(K):
-                    ret[k][di + i][dj + j] += (weight[l][k][di + 1][dj + 1] * gradients[l][i][j])
+    return to_tensor(out)
