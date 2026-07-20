@@ -1,15 +1,16 @@
 from ...tensor import Tensor
 
 def apply_weight_gradients(weight: Tensor, gradients: Tensor, eta: float):
-    """Apply: weight[k][i][j] = weight[k][i][j] - gradients[k][i][j] * eta
+    """Apply: weight[l][k][i][j] = weight[l][k][i][j] - gradients[l][k][i][j] * eta
 
     Args:
-        biase (Tensor): [N]
-        gradients (Tensor): [N]
+        weight (Tensor): [L][K][3][3]
+        gradients (Tensor): [L][K][3][3]
         eta (float): constant
     """
-    K, N, M = weight.shape()
-    for k in range(K):
-        for i in range(N):
-            for j in range(M):
-                weight[k][i][j] = weight[k][i][j] - gradients[k][i][j] * eta
+    L, K, N, M = weight.shape()
+    for l in range(L):
+        for k in range(K):
+            for i in range(N):
+                for j in range(M):
+                    weight[l][k][i][j] = weight[l][k][i][j] - gradients[l][k][i][j] * eta
