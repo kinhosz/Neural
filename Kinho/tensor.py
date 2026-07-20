@@ -1,107 +1,91 @@
 import numpy as np
-from typing import List, Union
 
 class Tensor(object):
     """
     A class representing a multi-dimensional tensor.
 
+    Internally backed by a numpy ndarray for speed (CPU-only for now), but
+    the public surface (shape/indexing/load_from/mul) stays the same on
+    purpose: callers should keep treating this as an opaque, hardware-
+    agnostic input/output type, never touch `_array` directly.
+
     Args:
         shape: tuple[int] = None
             the tensor's size
-        
+
     """
 
     def __init__(self, shape: tuple[int] = None, uniform=False, scale=1.0):
-        self._data: Union[List[float], List['Tensor']] = []
-        self._len = 0
+        self._array = None
 
         if shape:
-            self._len = shape[0]
-            if len(shape) != 1:
-                for _ in range(self._len):
-                    self._data.append(Tensor(shape[1:], uniform=uniform, scale=scale))
-            elif uniform:
-                self._data = np.random.uniform(low=-scale, high=scale, size=self._len).tolist()
+            if uniform:
+                self._array = np.random.uniform(low=-scale, high=scale, size=shape)
             else:
-                self._data = [float(0.0)] * self._len
+                self._array = np.zeros(shape, dtype=float)
 
-    def load_from(self, data: list):
-        if not is_list(data) or len(data) == 0:
-            raise TypeError(f"Expected list with len > 0, received {data}")
+    @staticmethod
+    def from_ndarray(array: np.ndarray) -> 'Tensor':
+        """Wraps an existing ndarray (no copy if it's already float64) -
+        the fast path for the numpy<->Tensor boundary in lib/cpu/*."""
+        t = Tensor()
+        t._array = np.asarray(array, dtype=float)
+        return t
 
-        if not is_list(data[0]) and not is_float(data[0]) and not is_tensor(data[0]):
-            raise TypeError(f"Expected list of list or list of floats. Received list of {type(data[0])}")
-
-        self._len = len(data)
-
-        if is_list(data[0]):
-            self._data = [Tensor().load_from(v) for v in data]
-        elif is_float(data[0]):
-            self._data = [float(v) for v in data]
+    def load_from(self, data) -> 'Tensor':
+        if is_tensor(data):
+            self._array = np.array(data._array, dtype=float)
         else:
-            self._data = data
-        self._assert_same_shape()
+            self._array = np.array(data, dtype=float)
+
+        if self._array.ndim == 0 or self._array.size == 0:
+            raise TypeError(f"Expected list with len > 0, received {data}")
 
         return self
 
     @staticmethod
     def from_trusted_list(data: list) -> 'Tensor':
-        """Builds a Tensor from a list already known to be well-formed
-        (e.g. straight out of ndarray.tolist()) - skips load_from's
-        validation, which dominates the cost of converting large tensors."""
-        t = Tensor()
-        t._len = len(data)
-        if isinstance(data[0], list):
-            t._data = [Tensor.from_trusted_list(v) for v in data]
-        else:
-            t._data = data
-        return t
+        """Kept for API compatibility with earlier callers - numpy's own
+        array construction is already the fast path, so this is now just
+        an alias for load_from/from_ndarray."""
+        return Tensor.from_ndarray(np.array(data, dtype=float))
 
-    def _assert_same_shape(self):
-        if is_float(self._data[0]):
-            return
+    def __getitem__(self, index):
+        sub = self._array[index]
+        if np.ndim(sub) == 0:
+            return float(sub)
+        return Tensor.from_ndarray(sub)
 
-        for i in range(self._len):
-            if self._data[0]._len != self._data[i]._len:
-                raise TypeError(f"Tensor has childs with different shapes")
-
-    def __getitem__(self, index: int):
-        return self._data[index]
-
-    def __setitem__(self, index: int, value: Union[float, 'Tensor']):
-        if is_tensor(self._data[0]):
-            if not is_tensor(value):
-                raise TypeError(f"Expected Tensor, received {type(value)}")
-            if self._data[0].shape() != value.shape():
-                raise TypeError(f"Expected shape{self._data[0].shape()} and received shape{value.shape()}")
-
-            self._data[index] = value
-        else:
+    def __setitem__(self, index, value):
+        if self._array.ndim == 1:
             if not is_float(value):
                 raise TypeError(f"Expected float, received {type(value)}")
-
-            self._data[index] = float(value)
+            self._array[index] = float(value)
+        else:
+            if not is_tensor(value):
+                raise TypeError(f"Expected Tensor, received {type(value)}")
+            if self._array[index].shape != value.shape():
+                raise TypeError(f"Expected shape{self._array[index].shape} and received shape{value.shape()}")
+            self._array[index] = value._array
 
     def __mul__(self, other: float):
         if not is_float(other):
             raise TypeError(f"Expected float, received {type(other)}")
-
-        res = [v * other for v in self._data]
-        return Tensor().load_from(res)
+        return Tensor.from_ndarray(self._array * other)
 
     def __rmul__(self, other: float):
         return self.__mul__(other)
 
     def to_list(self):
-        if is_float(self._data[0]):
-            return list(self._data)
-        return [v.to_list() for v in self._data]
+        return self._array.tolist()
+
+    def to_ndarray(self) -> np.ndarray:
+        """Returns the underlying ndarray directly (a view, not a copy) -
+        the fast path for the numpy<->Tensor boundary in lib/cpu/*."""
+        return self._array
 
     def shape(self):
-        if not isinstance(self._data[0], Tensor):
-            return (self._len,)
-        else:
-            return (self._len,) + self._data[0].shape()
+        return self._array.shape
 
 
 def is_float(val):

@@ -4,13 +4,14 @@ from ...tensor import Tensor
 
 
 def to_ndarray(tensor: Tensor) -> np.ndarray:
-    """Converts a Tensor into a numpy array, preserving shape."""
-    return np.array(tensor.to_list())
+    """Returns a Tensor's underlying ndarray (Tensor is numpy-backed now,
+    so this is O(1), not a conversion)."""
+    return tensor.to_ndarray()
 
 
 def to_tensor(array: np.ndarray) -> Tensor:
-    """Converts a numpy array back into a Tensor."""
-    return Tensor.from_trusted_list(array.tolist())
+    """Wraps a numpy array as a Tensor (O(1), no copy)."""
+    return Tensor.from_ndarray(array)
 
 
 def max_pool_np(arr: np.ndarray) -> np.ndarray:
