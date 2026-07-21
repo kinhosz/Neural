@@ -1,13 +1,24 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from .lib import ConvLayer, MaxPooling
+from .lib import ConvLayer, MaxPooling, LeakyReLU, TensorSigmoid2, Sigmoid2, LeakyReLUDense
 from .tensor import Tensor
 from .neural import Neural
 
 from .helper import calculate_pooling_layers
 
 KERNEL_SIZE = 3  # ConvLayer only supports 3x3 kernels today (see lib/cpu/convolution.py)
+
+BACKBONE_ACTIVATIONS = {
+    None: None,
+    "sigmoid2": TensorSigmoid2,
+    "leaky_relu": LeakyReLU,
+}
+
+DENSE_ACTIVATIONS = {
+    "sigmoid2": Sigmoid2,
+    "leaky_relu": LeakyReLUDense,
+}
 
 class ConvNeural(Neural):
     """
@@ -19,22 +30,42 @@ class ConvNeural(Neural):
                                 The length should be equals to `calculate_pooling_layers`
         fc_layers (list[int]): List containing the number of neurons in each fully connected layer,
                                 including the output layer.
+        eta (float): Learning rate, forwarded to the dense head (`Neural`).
+        activation (str | None): Activation applied after each ConvLayer, before MaxPooling.
+                                One of "sigmoid2", "leaky_relu" (default), or None (no
+                                activation - a stack of purely linear conv+pool stages, which
+                                doesn't learn: see the "leaky_relu" experiment in git history).
+        dense_activation (str): Hidden activation for the dense head (`fc_layers`). One of
+                                "sigmoid2" or "leaky_relu" (default - required to avoid
+                                saturating on the leaky_relu backbone's unbounded output).
+                                The output activation (Softmax/Sigmoid2) is unaffected.
     """
     def __init__(
         self,
         in_shape: tuple[int, int, int],
         filters: list[int],
-        fc_layers: list[int]
+        fc_layers: list[int],
+        eta: float = 0.01,
+        activation: str = "leaky_relu",
+        dense_activation: str = "leaky_relu"
     ) -> None:
 
         self._assert_args(in_shape, filters, fc_layers)
+        assert activation in BACKBONE_ACTIVATIONS, \
+            "`activation` must be one of {}".format(list(BACKBONE_ACTIVATIONS.keys()))
+        assert dense_activation in DENSE_ACTIVATIONS, \
+            "`dense_activation` must be one of {}".format(list(DENSE_ACTIVATIONS.keys()))
 
-        super().__init__(sizes=[filters[-1]] + fc_layers)
+        super().__init__(
+            sizes=[filters[-1]] + fc_layers,
+            eta=eta,
+            hidden_activation=DENSE_ACTIVATIONS[dense_activation]
+        )
 
         self._backbone = []
         res_weights, res_biases = self._build_backbone_tensors([in_shape[0]] + filters)
 
-        self._build_architecture(res_weights, res_biases)
+        self._build_architecture(res_weights, res_biases, eta, BACKBONE_ACTIVATIONS[activation])
 
     def _assert_args(self, input_shape, filters, fc_layers):
         assert isinstance(input_shape, tuple), "The `input_shape` must be a tuple."
@@ -75,9 +106,11 @@ class ConvNeural(Neural):
 
         return resources_weights, resources_biases
 
-    def _build_architecture(self, res_weights, res_biases):
+    def _build_architecture(self, res_weights, res_biases, eta, activation_cls):
         for res_weight, res_biase in zip(res_weights, res_biases):
-            self._backbone.append(ConvLayer(weight=res_weight, biase=res_biase))
+            self._backbone.append(ConvLayer(weight=res_weight, biase=res_biase, eta=eta))
+            if activation_cls is not None:
+                self._backbone.append(activation_cls())
             self._backbone.append(MaxPooling())
 
     def _pre_nn_feed_forward(self, data: Tensor) -> NDArray:

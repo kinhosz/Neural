@@ -14,7 +14,8 @@ def ceil(A, B):
 class Neural(object):
     warnings.filterwarnings("ignore", category=NumbaPerformanceWarning)
 
-    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1, multilabel=False):
+    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1, multilabel=False,
+                 hidden_activation=Sigmoid2):
         if not sizes and not brain_path:
             raise TypeError('Should set `sizes` or `brain_path` params')
 
@@ -25,7 +26,8 @@ class Neural(object):
         self.__fill = 0
         self.__tmp = {}
         self._multilabel = multilabel
-        
+        self.__hidden_activation = hidden_activation
+
         if 2**int(math.log2(self.__mini_batch)) != self.__mini_batch:
             raise TypeError("Mini-batch size is invalid. You can use {}".format(2**int(math.log2(max(1, self.__mini_batch)))))
 
@@ -61,7 +63,7 @@ class Neural(object):
     def _buildArchitecture(self, architecture, weights, biases):
         for i in range(0, len(architecture) - 1):
             self._layer.append(
-                Sigmoid2(
+                self.__hidden_activation(
                     (self.__mini_batch, 1, architecture[i]),
                     (self.__mini_batch, 1, architecture[i]),
                     gpuMode=self.__gpuMode
