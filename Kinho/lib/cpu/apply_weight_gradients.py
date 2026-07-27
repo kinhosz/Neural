@@ -1,5 +1,4 @@
 from ...tensor import Tensor
-from ._np_bridge import to_ndarray
 
 
 def apply_weight_gradients(weight: Tensor, gradients: Tensor, eta: float):
@@ -10,4 +9,4 @@ def apply_weight_gradients(weight: Tensor, gradients: Tensor, eta: float):
         gradients (Tensor): [L][K][3][3]
         eta (float): constant
     """
-    to_ndarray(weight)[...] -= to_ndarray(gradients) * eta
+    weight.to_ndarray()[...] -= gradients.to_ndarray() * eta

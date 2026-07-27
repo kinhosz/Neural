@@ -8,6 +8,4 @@ def apply_biase_gradients(biase: Tensor, gradients: Tensor, eta: float):
         gradients (Tensor): [N]
         eta (float): constant
     """
-    N, = biase.shape()
-    for i in range(N):
-        biase[i] = biase[i] - gradients[i] * eta
+    biase.to_ndarray()[...] -= gradients.to_ndarray() * eta

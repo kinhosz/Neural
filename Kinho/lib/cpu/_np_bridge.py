@@ -3,17 +3,6 @@ import numpy as np
 from ...tensor import Tensor
 
 
-def to_ndarray(tensor: Tensor) -> np.ndarray:
-    """Returns a Tensor's underlying ndarray (Tensor is numpy-backed now,
-    so this is O(1), not a conversion)."""
-    return tensor.to_ndarray()
-
-
-def to_tensor(array: np.ndarray) -> Tensor:
-    """Wraps a numpy array as a Tensor (O(1), no copy)."""
-    return Tensor.from_ndarray(array)
-
-
 def max_pool_np(arr: np.ndarray) -> np.ndarray:
     """max_pooling's forward math, on a raw (K, N, M) ndarray.
 

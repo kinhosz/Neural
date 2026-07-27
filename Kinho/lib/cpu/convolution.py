@@ -1,7 +1,6 @@
 import numpy as np
 
 from ...tensor import Tensor
-from ._np_bridge import to_ndarray, to_tensor
 
 
 def convolution(in_data: Tensor, weight: Tensor, biase: Tensor) -> Tensor:
@@ -15,9 +14,9 @@ def convolution(in_data: Tensor, weight: Tensor, biase: Tensor) -> Tensor:
     Returns:
         Tensor: [L][N][M]
     """
-    in_arr = to_ndarray(in_data)
-    weight_arr = to_ndarray(weight)
-    biase_arr = to_ndarray(biase)
+    in_arr = in_data.to_ndarray()
+    weight_arr = weight.to_ndarray()
+    biase_arr = biase.to_ndarray()
 
     K, N, M = in_arr.shape
     L = biase_arr.shape[0]
@@ -31,4 +30,4 @@ def convolution(in_data: Tensor, weight: Tensor, biase: Tensor) -> Tensor:
     out = cols @ weight_flat.T + biase_arr  # (N*M, L)
     out = out.T.reshape(L, N, M)
 
-    return to_tensor(out)
+    return Tensor.from_ndarray(out)
