@@ -5,7 +5,6 @@ from .convolution_derivate import convolution_derivate
 from .dot_matrix import dot_matrix
 from .dot_matrix_derivate import dot_matrix_derivate
 from .get_biase_gradients import get_biase_gradients
-from .get_local_field import get_local_field
 from .get_weight_gradients import get_weight_gradients
 from .leaky_relu import leaky_relu
 from .leaky_relu_derivate import leaky_relu_derivate

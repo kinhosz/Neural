@@ -1,5 +1,5 @@
 from ...tensor import Tensor
-from ._np_bridge import to_ndarray, to_tensor, max_pool_np
+from ._np_bridge import max_pool_np
 
 
 def max_pooling(in_data: Tensor) -> Tensor:
@@ -11,4 +11,4 @@ def max_pooling(in_data: Tensor) -> Tensor:
     Returns:
         Tensor: [k]][ceil(N/2)][ceil(M/2)]
     """
-    return to_tensor(max_pool_np(to_ndarray(in_data)))
+    return Tensor.from_ndarray(max_pool_np(in_data.to_ndarray()))

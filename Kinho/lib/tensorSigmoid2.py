@@ -1,6 +1,5 @@
 from ..tensor import Tensor
 from . import cpu
-from .cpu._np_bridge import to_ndarray, to_tensor
 
 class TensorSigmoid2(object):
     """Sigmoid2 activation for the conv backbone, where layers exchange
@@ -16,10 +15,10 @@ class TensorSigmoid2(object):
     def send(self, in_data: Tensor):
         self._cache = in_data
 
-        return to_tensor(cpu.sigmoid2(signals=to_ndarray(in_data)))
+        return Tensor.from_ndarray(cpu.sigmoid2(signals=in_data.to_ndarray()))
 
     def learn(self, gradients: Tensor):
-        return to_tensor(cpu.sigmoid2_derivate(
-            signals=to_ndarray(self._cache),
-            alphas=to_ndarray(gradients)
+        return Tensor.from_ndarray(cpu.sigmoid2_derivate(
+            signals=self._cache.to_ndarray(),
+            alphas=gradients.to_ndarray()
         ))

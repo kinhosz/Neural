@@ -1,5 +1,4 @@
 from ...tensor import Tensor
-from ._np_bridge import to_ndarray, to_tensor
 
 
 def get_biase_gradients(gradients: Tensor) -> Tensor:
@@ -11,5 +10,5 @@ def get_biase_gradients(gradients: Tensor) -> Tensor:
     Returns:
         Tensor: [L]
     """
-    grad_arr = to_ndarray(gradients)
-    return to_tensor(grad_arr.sum(axis=(1, 2)))
+    grad_arr = gradients.to_ndarray()
+    return Tensor.from_ndarray(grad_arr.sum(axis=(1, 2)))

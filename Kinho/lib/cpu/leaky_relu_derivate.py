@@ -1,7 +1,6 @@
 import numpy as np
 
 from ...tensor import Tensor
-from ._np_bridge import to_ndarray, to_tensor
 from .leaky_relu import LEAK
 
 
@@ -17,7 +16,7 @@ def leaky_relu_derivate(in_data: Tensor, gradients: Tensor, leak: float = LEAK) 
     Returns:
         Tensor: [K][N][M]
     """
-    arr = to_ndarray(in_data)
-    grad_arr = to_ndarray(gradients)
+    arr = in_data.to_ndarray()
+    grad_arr = gradients.to_ndarray()
 
-    return to_tensor(np.where(arr > 0, grad_arr, leak * grad_arr))
+    return Tensor.from_ndarray(np.where(arr > 0, grad_arr, leak * grad_arr))

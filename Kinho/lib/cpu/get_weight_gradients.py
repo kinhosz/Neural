@@ -1,7 +1,6 @@
 import numpy as np
 
 from ...tensor import Tensor
-from ._np_bridge import to_ndarray, to_tensor
 
 
 def get_weight_gradients(in_data: Tensor, gradients: Tensor) -> Tensor:
@@ -14,8 +13,8 @@ def get_weight_gradients(in_data: Tensor, gradients: Tensor) -> Tensor:
     Returns:
         Tensor: [L][K][3][3]
     """
-    in_arr = to_ndarray(in_data)
-    grad_arr = to_ndarray(gradients)
+    in_arr = in_data.to_ndarray()
+    grad_arr = gradients.to_ndarray()
 
     K, N, M = in_arr.shape
     L = grad_arr.shape[0]
@@ -29,4 +28,4 @@ def get_weight_gradients(in_data: Tensor, gradients: Tensor) -> Tensor:
     grad_flat = grad_arr.reshape(L, N * M)
     weight_grad = (grad_flat @ cols).reshape(L, K, 3, 3)
 
-    return to_tensor(weight_grad)
+    return Tensor.from_ndarray(weight_grad)

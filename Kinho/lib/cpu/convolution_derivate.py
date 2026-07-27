@@ -1,7 +1,6 @@
 import numpy as np
 
 from ...tensor import Tensor
-from ._np_bridge import to_ndarray, to_tensor
 
 
 def convolution_derivate(weight: Tensor, gradients: Tensor) -> Tensor:
@@ -14,8 +13,8 @@ def convolution_derivate(weight: Tensor, gradients: Tensor) -> Tensor:
     Returns:
         new gradients: [K][N][M]
     """
-    weight_arr = to_ndarray(weight)
-    grad_arr = to_ndarray(gradients)
+    weight_arr = weight.to_ndarray()
+    grad_arr = gradients.to_ndarray()
 
     L, K = weight_arr.shape[0], weight_arr.shape[1]
     N, M = grad_arr.shape[1], grad_arr.shape[2]
@@ -32,4 +31,4 @@ def convolution_derivate(weight: Tensor, gradients: Tensor) -> Tensor:
     out = cols @ weight_flat.T  # (N*M, K)
     out = out.T.reshape(K, N, M)
 
-    return to_tensor(out)
+    return Tensor.from_ndarray(out)

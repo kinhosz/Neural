@@ -1,7 +1,7 @@
 import numpy as np
 
 from ...tensor import Tensor
-from ._np_bridge import to_ndarray, to_tensor, max_pool_np
+from ._np_bridge import max_pool_np
 
 
 def max_pooling_derivate(in_data: Tensor, gradients: Tensor) -> Tensor:
@@ -15,8 +15,8 @@ def max_pooling_derivate(in_data: Tensor, gradients: Tensor) -> Tensor:
         Tensor: [K][N][M]
     """
     eps = 1e-9
-    arr = to_ndarray(in_data)
-    grad_arr = to_ndarray(gradients)
+    arr = in_data.to_ndarray()
+    grad_arr = gradients.to_ndarray()
     K, N, M = arr.shape
 
     maxvals = max_pool_np(arr)  # (K, ceil(N/2), ceil(M/2))
@@ -29,4 +29,4 @@ def max_pooling_derivate(in_data: Tensor, gradients: Tensor) -> Tensor:
     is_max = np.abs(arr - maxvals_up) < eps
     ret = np.where(is_max, grad_up, 0.0)
 
-    return to_tensor(ret)
+    return Tensor.from_ndarray(ret)
