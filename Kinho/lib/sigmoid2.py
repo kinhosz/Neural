@@ -19,19 +19,19 @@ class Sigmoid2:
     def type(self):
         return self._typeLayer
 
-    def send(self, signals):
-        self._cache = signals
+    def send(self, in_data):
+        self._cache = in_data
 
         if self._gpu:
-            return gpu.sigmoid2(signals=signals, buffer=self._outBuffer)
+            return gpu.sigmoid2(signals=in_data, buffer=self._outBuffer)
         else:
-            return cpu.sigmoid2(signals=signals)
+            return cpu.sigmoid2(signals=in_data)
 
-    def learn(self, alphas):
+    def learn(self, gradients):
         if self._gpu:
             return gpu.sigmoid2_derivate(signals=self._cache,
-                                        alphas=alphas,
+                                        alphas=gradients,
                                         buffer=self._inBuffer)
         else:
             return cpu.sigmoid2_derivate(signals=self._cache,
-                                         alphas=alphas)
+                                         alphas=gradients)

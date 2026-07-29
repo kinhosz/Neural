@@ -38,30 +38,30 @@ class DotMatrix:
     def type(self):
         return self._typeLayer
 
-    def send(self, signals):
-        self._cache = signals
+    def send(self, in_data):
+        self._cache = in_data
         if self._gpu:
-            return gpu.dot_matrix(signals=signals,
+            return gpu.dot_matrix(signals=in_data,
                                   weight=self._weight,
                                   bias=self._biase,
                                   buffer=self._inBuffer)
         else:
-            return cpu.dot_matrix(signals=signals,
+            return cpu.dot_matrix(signals=in_data,
                                   weight=self._weight,
                                   bias=self._biase)
-    
-    def learn(self, alphas):
-        nabla_w = self._transpose(self._cache, alphas)
-        nabla_b = alphas
+
+    def learn(self, gradients):
+        nabla_w = self._transpose(self._cache, gradients)
+        nabla_b = gradients
         response = None
 
         if self._gpu:
             response = gpu.dot_matrix_derivate(const_matrix=self._weight, 
-                                                alphas=alphas, 
+                                                alphas=gradients, 
                                                 buffer=self._outBuffer)
         else:
             response = cpu.dot_matrix_derivate(const_matrix=self._weight, 
-                                                alphas=alphas)
+                                                alphas=gradients)
 
         self._updateWeight(nabla_w)
         self._updateBias(nabla_b)

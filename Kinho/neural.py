@@ -14,7 +14,8 @@ def ceil(A, B):
 class Neural(object):
     warnings.filterwarnings("ignore", category=NumbaPerformanceWarning)
 
-    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1, multilabel=False):
+    def __init__(self, sizes=None, brain_path=None, eta=0.01, gpu=False, mini_batch_size=1, multilabel=False,
+                 hidden_activation=Sigmoid2):
         if not sizes and not brain_path:
             raise TypeError('Should set `sizes` or `brain_path` params')
 
@@ -25,7 +26,8 @@ class Neural(object):
         self.__fill = 0
         self.__tmp = {}
         self._multilabel = multilabel
-        
+        self.__hidden_activation = hidden_activation
+
         if 2**int(math.log2(self.__mini_batch)) != self.__mini_batch:
             raise TypeError("Mini-batch size is invalid. You can use {}".format(2**int(math.log2(max(1, self.__mini_batch)))))
 
@@ -42,21 +44,26 @@ class Neural(object):
                                     biases=self._genRandomBiases(sizes))
 
     def _genRandomWeights(self, arch):
-        return [
-            np.random.uniform(-2,2,x*y).reshape((x, y)) 
-            for x,y in zip(arch[:-1], arch[1:])
-        ]
+        weights = []
+        for x, y in zip(arch[:-1], arch[1:]):
+            # Var(sum of fan_in weight*input terms) = fan_in * Var(weight);
+            # solving Var(weight) = limit^2/3 for Var(sum) == 1 gives this.
+            fan_in = x
+            limit = (3 / fan_in) ** 0.5
+            weights.append(np.random.uniform(low=-limit, high=limit, size=x*y).reshape((x, y)))
+
+        return weights
     
     def _genRandomBiases(self, arch):
         return [
-            np.random.uniform(0, -1, x).reshape((1,x)) 
+            np.random.uniform(low=-1, high=1, size=x).reshape((1,x)) 
             for x in arch[1:]
         ]
 
     def _buildArchitecture(self, architecture, weights, biases):
         for i in range(0, len(architecture) - 1):
             self._layer.append(
-                Sigmoid2(
+                self.__hidden_activation(
                     (self.__mini_batch, 1, architecture[i]),
                     (self.__mini_batch, 1, architecture[i]),
                     gpuMode=self.__gpuMode
@@ -97,13 +104,13 @@ class Neural(object):
             )
         )
 
-    def __feedForward(self, x):
+    def _feed_forward(self, x):
         for i in range(len(self._layer) - 1):
-            x = self._layer[i].send(signals=x)
+            x = self._layer[i].send(x)
 
         return x
 
-    def __backPropagation(self, signals, targets):
+    def _backpropagation(self, signals, targets):
         for i in range(len(self._layer) - 1):
             signals = self._layer[i].send(signals)
         
@@ -111,7 +118,9 @@ class Neural(object):
         
         for i in reversed(range(len(self._layer))):
             targets = self._layer[i].learn(targets)
-    
+
+        return targets
+
     def __buildMsg(self, x):
         if self.__gpuMode:
             return cuda.to_device(x)
@@ -138,7 +147,7 @@ class Neural(object):
         img = self.__buildMsg(img)
         target = self.__buildMsg(target)
         
-        self.__backPropagation(img, target)
+        self._backpropagation(img, target)
         self.__fill = 0
         
         self.__tmp['img'] = []
@@ -148,7 +157,7 @@ class Neural(object):
         l = input
 
         x = self.__buildMsg(np.array([[l]]))
-        arr = self.__feedForward(x)
+        arr = self._feed_forward(x)
 
         hst, = loadTo(arr, mode='CPU')
         y = hst[0][0]
@@ -169,7 +178,7 @@ class Neural(object):
         np_x = self.__buildMsg(np.array([[x]]))
         np_y = self.__buildMsg(np.array([[y]]))
         
-        np_x = self.__feedForward(np_x)
+        np_x = self._feed_forward(np_x)
         ret = self._layer[-1].send(np_x, np_y)
 
         return ret[0]
