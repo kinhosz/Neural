@@ -6,6 +6,12 @@ function - written from scratch against plain nested lists, not against the
 Tensor/implementation being changed. Run this file before AND after
 vectorizing to make sure the rewrite is behavior-preserving, not just
 "doesn't crash".
+
+The `ref_*_batch` wrappers add the batch axis on top of those single-sample
+references: independent per-sample results for convolution/pooling, and a
+per-sample-then-mean-over-batch reduction for the weight/bias gradients
+(matching the mean-reduction convention used across the whole codebase, see
+lib/cpu/stochastic_gradient_descent.py).
 """
 import random
 
@@ -33,6 +39,13 @@ def tensor_to_nested(t):
     return [tensor_to_nested(t[i]) for i in range(t.shape()[0])]
 
 
+def nested_mean(items):
+    """Elementwise mean across a list of same-shaped nested lists."""
+    if isinstance(items[0], list):
+        return [nested_mean([it[i] for it in items]) for i in range(len(items[0]))]
+    return sum(items) / len(items)
+
+
 def assert_close(a, b, path=""):
     if isinstance(a, list):
         assert len(a) == len(b), f"len mismatch at {path}: {len(a)} vs {len(b)}"
@@ -43,7 +56,7 @@ def assert_close(a, b, path=""):
 
 
 # ---------------------------------------------------------------------------
-# reference implementations
+# reference implementations (single sample)
 # ---------------------------------------------------------------------------
 
 def ref_local_field(in_data, i, j):
@@ -163,61 +176,99 @@ def ref_max_pooling_derivate(in_data, gradients):
 
 
 # ---------------------------------------------------------------------------
+# reference implementations (batched: leading BATCH axis)
+# ---------------------------------------------------------------------------
+
+def ref_convolution_batch(in_data_batch, weight, biase):
+    return [ref_convolution(sample, weight, biase) for sample in in_data_batch]
+
+
+def ref_convolution_derivate_batch(weight, gradients_batch):
+    return [ref_convolution_derivate(weight, sample) for sample in gradients_batch]
+
+
+def ref_get_weight_gradients_batch(in_data_batch, gradients_batch):
+    per_sample = [ref_get_weight_gradients(i, g) for i, g in zip(in_data_batch, gradients_batch)]
+    return nested_mean(per_sample)
+
+
+def ref_get_biase_gradients_batch(gradients_batch):
+    per_sample = [ref_get_biase_gradients(g) for g in gradients_batch]
+    return nested_mean(per_sample)
+
+
+def ref_max_pooling_batch(in_data_batch):
+    return [ref_max_pooling(sample) for sample in in_data_batch]
+
+
+def ref_max_pooling_derivate_batch(in_data_batch, gradients_batch):
+    return [ref_max_pooling_derivate(i, g) for i, g in zip(in_data_batch, gradients_batch)]
+
+
+# ---------------------------------------------------------------------------
 # tests
 # ---------------------------------------------------------------------------
 
-SHAPES = [(1, 1, 3, 3), (2, 3, 4, 4), (3, 2, 5, 5), (2, 4, 5, 4), (1, 1, 1, 1), (3, 3, 7, 6)]
+# (BATCH, K, L, N, M)
+SHAPES = [
+    (1, 1, 1, 3, 3),
+    (2, 2, 3, 4, 4),
+    (3, 3, 2, 5, 5),
+    (2, 2, 4, 5, 4),
+    (1, 1, 1, 1, 1),
+    (3, 3, 3, 7, 6),
+]
 
 
-@pytest.mark.parametrize("K,L,N,M", SHAPES)
-def test_convolution_matches_reference(K, L, N, M):
+@pytest.mark.parametrize("B,K,L,N,M", SHAPES)
+def test_convolution_matches_reference(B, K, L, N, M):
     random.seed(0)
-    in_data = rand_list((K, N, M))
+    in_data = rand_list((B, K, N, M))
     weight = rand_list((L, K, 3, 3))
     biase = rand_list((L,))
 
-    expected = ref_convolution(in_data, weight, biase)
+    expected = ref_convolution_batch(in_data, weight, biase)
     got = cpu.convolution(to_tensor(in_data), to_tensor(weight), to_tensor(biase))
 
     assert_close(tensor_to_nested(got), expected)
 
 
-@pytest.mark.parametrize("K,L,N,M", SHAPES)
-def test_convolution_derivate_matches_reference(K, L, N, M):
+@pytest.mark.parametrize("B,K,L,N,M", SHAPES)
+def test_convolution_derivate_matches_reference(B, K, L, N, M):
     random.seed(1)
     weight = rand_list((L, K, 3, 3))
-    gradients = rand_list((L, N, M))
+    gradients = rand_list((B, L, N, M))
 
-    expected = ref_convolution_derivate(weight, gradients)
+    expected = ref_convolution_derivate_batch(weight, gradients)
     got = cpu.convolution_derivate(to_tensor(weight), to_tensor(gradients))
 
     assert_close(tensor_to_nested(got), expected)
 
 
-@pytest.mark.parametrize("K,L,N,M", SHAPES)
-def test_get_weight_gradients_matches_reference(K, L, N, M):
+@pytest.mark.parametrize("B,K,L,N,M", SHAPES)
+def test_get_weight_gradients_matches_reference(B, K, L, N, M):
     random.seed(2)
-    in_data = rand_list((K, N, M))
-    gradients = rand_list((L, N, M))
+    in_data = rand_list((B, K, N, M))
+    gradients = rand_list((B, L, N, M))
 
-    expected = ref_get_weight_gradients(in_data, gradients)
+    expected = ref_get_weight_gradients_batch(in_data, gradients)
     got = cpu.get_weight_gradients(to_tensor(in_data), to_tensor(gradients))
 
     assert_close(tensor_to_nested(got), expected)
 
 
-@pytest.mark.parametrize("K,L,N,M", SHAPES)
-def test_get_biase_gradients_matches_reference(K, L, N, M):
+@pytest.mark.parametrize("B,K,L,N,M", SHAPES)
+def test_get_biase_gradients_matches_reference(B, K, L, N, M):
     random.seed(3)
-    gradients = rand_list((L, N, M))
+    gradients = rand_list((B, L, N, M))
 
-    expected = ref_get_biase_gradients(gradients)
+    expected = ref_get_biase_gradients_batch(gradients)
     got = cpu.get_biase_gradients(to_tensor(gradients))
 
     assert_close(tensor_to_nested(got), expected)
 
 
-@pytest.mark.parametrize("K,L,N,M", SHAPES)
+@pytest.mark.parametrize("K,L,N,M", [s[1:] for s in SHAPES])
 def test_apply_weight_gradients_matches_reference(K, L, N, M):
     random.seed(4)
     weight = rand_list((L, K, 3, 3))
@@ -244,25 +295,36 @@ def test_apply_biase_gradients_matches_reference():
     assert_close(tensor_to_nested(b_tensor), expected)
 
 
-@pytest.mark.parametrize("K,N,M", [(1, 4, 4), (2, 5, 5), (3, 4, 5), (2, 7, 3), (1, 1, 1), (3, 8, 8)])
-def test_max_pooling_matches_reference(K, N, M):
-    random.seed(6)
-    in_data = rand_list((K, N, M))
+# (BATCH, K, N, M)
+POOL_SHAPES = [
+    (1, 1, 4, 4),
+    (2, 2, 5, 5),
+    (3, 3, 4, 5),
+    (2, 2, 7, 3),
+    (1, 1, 1, 1),
+    (3, 3, 8, 8),
+]
 
-    expected = ref_max_pooling(in_data)
+
+@pytest.mark.parametrize("B,K,N,M", POOL_SHAPES)
+def test_max_pooling_matches_reference(B, K, N, M):
+    random.seed(6)
+    in_data = rand_list((B, K, N, M))
+
+    expected = ref_max_pooling_batch(in_data)
     got = cpu.max_pooling(in_data=to_tensor(in_data))
 
     assert_close(tensor_to_nested(got), expected)
 
 
-@pytest.mark.parametrize("K,N,M", [(1, 4, 4), (2, 5, 5), (3, 4, 5), (2, 7, 3), (1, 1, 1), (3, 8, 8)])
-def test_max_pooling_derivate_matches_reference(K, N, M):
+@pytest.mark.parametrize("B,K,N,M", POOL_SHAPES)
+def test_max_pooling_derivate_matches_reference(B, K, N, M):
     random.seed(7)
-    in_data = rand_list((K, N, M))
+    in_data = rand_list((B, K, N, M))
     I2, J2 = (N + 1) // 2, (M + 1) // 2
-    gradients = rand_list((K, I2, J2))
+    gradients = rand_list((B, K, I2, J2))
 
-    expected = ref_max_pooling_derivate(in_data, gradients)
+    expected = ref_max_pooling_derivate_batch(in_data, gradients)
     got = cpu.max_pooling_derivate(in_data=to_tensor(in_data), gradients=to_tensor(gradients))
 
     assert_close(tensor_to_nested(got), expected)

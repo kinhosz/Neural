@@ -10,11 +10,11 @@ def leaky_relu_derivate(in_data: Tensor, gradients: Tensor, leak: float = LEAK) 
     f'(x) = 1 if x > 0 else leak
 
     Args:
-        in_data (Tensor): [K][N][M], the cached forward input
-        gradients (Tensor): [K][N][M]
+        in_data (Tensor): [BATCH][K][N][M], the cached forward input
+        gradients (Tensor): [BATCH][K][N][M]
 
     Returns:
-        Tensor: [K][N][M]
+        Tensor: [BATCH][K][N][M]
     """
     arr = in_data.to_ndarray()
     grad_arr = gradients.to_ndarray()
