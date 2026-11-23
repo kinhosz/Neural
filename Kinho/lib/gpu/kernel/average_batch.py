@@ -32,7 +32,7 @@ def perform(buffer: DeviceNDArray, gradients: DeviceNDArray):
     for k in range(1, cuda.blockDim.x):
         tmp[0, ty, tz] += tmp[k, ty, tz]
     
-    cuda.atomic.add(buffer, (y_row, z_col), tmp[0, ty, tz])
+    cuda.atomic.add(buffer, (y_row, z_col), tmp[0, ty, tz] / gradients.shape[0])
 
 def average_batch(buffer: DeviceNDArray, gradients: DeviceNDArray):
     blockspergrid = grid_config(

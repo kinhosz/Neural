@@ -29,11 +29,11 @@ class MSE:
             return cpu.mse(predict=predict,
                            target=target)
     
-    def learn(self, targets):
+    def learn(self, gradients):
         if self._gpu:
             return gpu.mse_derivate(predicts=self._cache,
-                                    targets=targets,
+                                    targets=gradients,
                                     buffer=self._inBuffer)
         else:
             return cpu.mse_derivate(predicts=self._cache,
-                                    targets=targets)
+                                    targets=gradients)
